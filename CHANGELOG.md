@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/raphaelbahat/pi-workflows/compare/v1.0.0...v1.1.0) (2026-09-02)
+
+
+### Features
+
+* ground syntax gate in upstream pi-subagents meta validation ([27050a2](https://github.com/raphaelbahat/pi-workflows/commit/27050a2c0643592311fcb2907d15c860fc320591))
+
 ## [1.0.0](https://github.com/raphaelbahat/pi-workflows/compare/v0.1.0...v1.0.0) (2026-09-02)
 
 
