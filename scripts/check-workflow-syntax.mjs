@@ -8,14 +8,18 @@
 // metadata stripped before compilation. Plain `node --check` therefore always
 // rejects them ("Illegal return statement").
 //
-// This gate reproduces the engine's shape for validation only: strip
-// line-leading `export ` keywords, wrap the body in `(async () => { ... })()`,
-// and run `node --check` on the wrapped source. The scripts themselves are
-// never modified.
+// This gate reproduces the engine's actual validation: meta extraction and
+// pure-literal checks are ported from the upstream resolver (tintinweb/
+// pi-subagents src/workflow/meta.ts, MIT — see scripts/lib/workflow-meta.mjs
+// for the full attribution), and the body-shape check wraps the extracted body
+// in `(async () => { ... })()` and runs `node --check` on it, mirroring the
+// engine's `new vm.Script("(async () => {\n" + script + "\n})()")` compilation.
+// The scripts themselves are never modified.
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { extractMeta, WorkflowMetaError } from './lib/workflow-meta.mjs'
 
 const files = process.argv.slice(2)
 if (files.length === 0) {
@@ -27,8 +31,20 @@ const tmp = mkdtempSync(join(tmpdir(), 'pi-workflow-check-'))
 let failed = false
 try {
   for (const file of files) {
-    const src = readFileSync(file, 'utf8').replace(/^export\s+/gm, '')
-    const wrapped = `(async () => {\n${src}\n})();\n`
+    const src = readFileSync(file, 'utf8')
+    let body
+    try {
+      // Upstream resolver semantics: meta must exist, be a pure literal
+      // (evaluated in an empty node:vm context with a 100ms bound), and carry
+      // the required fields. Throws WorkflowMetaError with author-facing text.
+      ;({ body } = extractMeta(src))
+    } catch (error) {
+      failed = true
+      console.error(`FAIL ${file}`)
+      console.error(error instanceof WorkflowMetaError ? error.message : error)
+      continue
+    }
+    const wrapped = `(async () => {\n${body}\n})();\n`
     const out = join(tmp, file.replace(/[^\w.-]/g, '_') + '.mjs')
     writeFileSync(out, wrapped)
     const r = spawnSync(process.execPath, ['--check', out], { encoding: 'utf8' })
