@@ -2,7 +2,7 @@
 
 Reusable, args-driven [pi-subagents](https://github.com/tintinweb/pi-subagents) workflows.
 Distributed to projects via the Skillshare global extra `pi-workflows`
-(source = this repo, mode = merge → per-file symlinks at `<project>/.pi/workflows/`).
+(source = this repo, mode = **copy** — real files at `<project>/.pi/workflows/`).
 
 ## Files
 
@@ -54,8 +54,11 @@ pi -p --subagents-workflow-file="$HOME/pi-workflows/pi-plugin-eval.js"   # use t
 ## Maintenance discipline
 
 - **Edit at source only** (`~/pi-workflows`), then `skillshare sync extras` — targets are managed
-  symlinks; never edit synced files inside a project.
-- `skillshare extras list` shows drift; `skillshare diff` covers extras.
+  **copies** (mode=copy) and go stale until re-synced; `skillshare extras list` shows drift,
+  `skillshare diff` covers extras. Never edit synced files inside a project.
+- **Mode must be `copy`:** pi-subagents' workflow resolver SKIPS SYMLINKS when scanning
+  `.pi/workflows/`, so `merge` (per-file symlink) and `symlink` (whole dir) modes break by-name
+  discovery. Verified 2026-09-02: symlinked workflow -> "No saved workflow named ..."; real copy -> resolves.
 - Workflow scripts must keep the `export const meta = { name, description }` declaration (the
   resolver's marker), a pure-literal `meta`, and no `Date.now`/`Math.random` (determinism for resume).
 - Add new projects as targets: `skillshare extras pi-workflows --add-target /path/to/project/.pi/workflows -g`
@@ -65,4 +68,6 @@ pi -p --subagents-workflow-file="$HOME/pi-workflows/pi-plugin-eval.js"   # use t
 
 - 2026-09-02: initial genericization from the 54-plugin context-optimization sweep
   (eval/verify/gate/skip-if-exists/tool-discipline hardened prompts; digest+compose synthesis).
+- 2026-09-02: discovered pi-subagents resolver skips symlinked workflows in `.pi/workflows/` —
+  switched the skillshare extra to copy mode; by-name invocation then resolved correctly.
   2-plugin smoke test via by-name + object args; args-as-string pass; drift check — see session log.
