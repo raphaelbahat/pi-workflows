@@ -1,0 +1,31 @@
+# prek configuration for the pi-workflows repository.
+# Shape mirrors raphaelbahat/coding-skills (~/.config/skillshare): universal
+# hygiene builtins. agnix/rumdl/shellcheck are skill-, markdown-, and
+# shell-specific and deliberately not adopted — this repo is JavaScript-only.
+# See: https://prek.j178.dev/
+
+minimum_prek_version = "0.4.5"
+
+# ── JavaScript syntax gate ───────────────────────────────────────────────
+# pi-subagents workflow scripts compile as an async function body (top-level
+# `return`/`await` are legal; the `export const meta` header is loader
+# metadata), so they cannot pass a bare `node --check`. The gate reproduces
+# the engine's wrapper shape before syntax-checking.
+[[repos]]
+repo = "local"
+hooks = [
+  { id = "workflow-syntax", name = "workflow script syntax (node --check, pi-subagents wrapper shape)", entry = "node scripts/check-workflow-syntax.mjs", language = "system", files = "\\.js$" },
+]
+
+# ── Built-in hooks (offline, Rust-native) ────────────────────────────────
+[[repos]]
+repo = "builtin"
+hooks = [
+  { id = "trailing-whitespace" },
+  { id = "end-of-file-fixer" },
+  { id = "check-yaml" },
+  { id = "check-json" },
+  { id = "check-toml" },
+  { id = "check-merge-conflict" },
+  { id = "mixed-line-ending", args = ["--fix=lf"] },
+]

@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Same gate as the local prek hook: hygiene builtins + the workflow
+      # script syntax check (scripts/check-workflow-syntax.mjs). All hooks
+      # are builtin/local — no network fetches, no secrets.
+      - name: Install prek
+        run: pipx install prek
+
+      - name: Run prek hooks (all files)
+        run: prek run -a
