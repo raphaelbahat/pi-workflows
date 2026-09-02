@@ -53,9 +53,10 @@ pi -p --subagents-workflow-file="$HOME/pi-workflows/pi-plugin-eval.js"   # use t
 
 ## Maintenance discipline
 
-- **Edit at source only** (`~/pi-workflows`), then `skillshare sync extras` — targets are managed
-  **copies** (mode=copy) and go stale until re-synced; `skillshare extras list` shows drift,
-  `skillshare diff` covers extras. Never edit synced files inside a project.
+- **Edit at source only** (`~/pi-workflows`), then `skillshare sync extras --force` — targets are managed
+  **copies** (mode=copy) that go stale after source edits; plain sync SKIPS conflicting files in copy mode,
+  so `--force` is the standard re-sync. `skillshare extras list` shows drift, `skillshare diff` covers extras.
+  Never edit synced files inside a project.
 - **Mode must be `copy`:** pi-subagents' workflow resolver SKIPS SYMLINKS when scanning
   `.pi/workflows/`, so `merge` (per-file symlink) and `symlink` (whole dir) modes break by-name
   discovery. Verified 2026-09-02: symlinked workflow -> "No saved workflow named ..."; real copy -> resolves.
