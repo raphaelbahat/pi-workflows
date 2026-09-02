@@ -5,6 +5,9 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+  # GITHUB_TOKEN pushes (release-please auto-merge) do not trigger push
+  # events — allow manual dispatch to run CI on such commits.
+  workflow_dispatch:
 
 permissions:
   contents: read
