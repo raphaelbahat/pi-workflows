@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.3](https://github.com/raphaelbahat/pi-workflows/compare/v1.1.2...v1.1.3) (2026-09-03)
+
+
+### Bug Fixes
+
+* **ci:** actionlint hook from local to remote repo form (CI runners lack actionlint on PATH) ([95e90e7](https://github.com/raphaelbahat/pi-workflows/commit/95e90e70be938bb7e6671cc891d8dfc56a661dad))
+
 ## [1.1.2](https://github.com/raphaelbahat/pi-workflows/compare/v1.1.1...v1.1.2) (2026-09-03)
 
 
