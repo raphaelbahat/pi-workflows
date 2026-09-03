@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/raphaelbahat/pi-workflows/compare/v1.1.1...v1.1.2) (2026-09-03)
+
+
+### Bug Fixes
+
+* **ci:** don't trigger CI on release-please PRs (paths-ignore) ([a793625](https://github.com/raphaelbahat/pi-workflows/commit/a793625ac873c4e7bd9547278343414dbbd358d3))
+
 ## [1.1.1](https://github.com/raphaelbahat/pi-workflows/compare/v1.1.0...v1.1.1) (2026-09-03)
 
 
