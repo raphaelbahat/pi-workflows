@@ -17,6 +17,16 @@ hooks = [
   { id = "workflow-syntax", name = "workflow script syntax (node --check, pi-subagents wrapper shape)", entry = "node scripts/check-workflow-syntax.mjs", language = "system", files = "\\.js$" },
 ]
 
+# ── GitHub Actions workflow lint gate ───────────────────────────────────
+# actionlint is installed on the machine (Homebrew); prefer a local system
+# hook so the tool binary on PATH is used directly. Fall back to the
+# rhysd/actionlint pre-commit repo when actionlint is not available.
+[[repos]]
+repo = "local"
+hooks = [
+  { id = "actionlint", name = "GitHub Actions workflow linter (actionlint)", entry = "actionlint", language = "system", files = "^\\.github/workflows/.*\\.ya?ml$" },
+]
+
 # ── Built-in hooks (offline, Rust-native) ────────────────────────────────
 [[repos]]
 repo = "builtin"
