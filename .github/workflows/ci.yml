@@ -5,6 +5,11 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+    # Skip release-please PRs (CHANGELOG.md + manifest): GITHUB_TOKEN-authored
+    # PRs trigger GitHub's 'Approve and run' gate on pull_request workflows.
+    paths-ignore:
+      - 'CHANGELOG.md'
+      - '.release-please-manifest.json'
   # GITHUB_TOKEN pushes (release-please auto-merge) do not trigger push
   # events — allow manual dispatch to run CI on such commits.
   workflow_dispatch:
