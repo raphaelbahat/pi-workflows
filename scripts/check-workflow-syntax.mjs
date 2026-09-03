@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { spawnSync } from 'node:child_process'
 // Syntax gate for pi-subagents workflow scripts.
 //
 // These scripts are NOT plain Node modules: pi-subagents compiles them as an
@@ -15,10 +16,9 @@
 // in `(async () => { ... })()` and runs `node --check` on it, mirroring the
 // engine's `new vm.Script("(async () => {\n" + script + "\n})()")` compilation.
 // The scripts themselves are never modified.
-import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { spawnSync } from 'node:child_process'
 import { extractMeta, WorkflowMetaError } from './lib/workflow-meta.mjs'
 
 const files = process.argv.slice(2)

@@ -75,12 +75,19 @@ function scanObjectLiteral(source, open) {
       continue
     }
     if (mode === 'block-comment') {
-      if (c === '*' && next === '/') { mode = 'code'; i += 2; continue }
+      if (c === '*' && next === '/') {
+        mode = 'code'
+        i += 2
+        continue
+      }
       i++
       continue
     }
     if (mode === 'single' || mode === 'double' || mode === 'regex') {
-      if (c === '\\') { i += 2; continue }
+      if (c === '\\') {
+        i += 2
+        continue
+      }
       if (mode === 'single' && c === "'") mode = 'code'
       else if (mode === 'double' && c === '"') mode = 'code'
       else if (mode === 'regex' && c === '/') mode = 'code'
@@ -91,8 +98,15 @@ function scanObjectLiteral(source, open) {
       continue
     }
     if (mode === 'template') {
-      if (c === '\\') { i += 2; continue }
-      if (c === '`') { mode = 'code'; i++; continue }
+      if (c === '\\') {
+        i += 2
+        continue
+      }
+      if (c === '`') {
+        mode = 'code'
+        i++
+        continue
+      }
       if (c === '$' && next === '{') {
         sawInterpolation = true
         templateStack.push(depth)
@@ -106,13 +120,41 @@ function scanObjectLiteral(source, open) {
     }
 
     // mode === "code"
-    if (c === '/' && next === '/') { mode = 'line-comment'; i += 2; continue }
-    if (c === '/' && next === '*') { mode = 'block-comment'; i += 2; continue }
-    if (c === "'") { mode = 'single'; i++; continue }
-    if (c === '"') { mode = 'double'; i++; continue }
-    if (c === '`') { mode = 'template'; i++; continue }
-    if (c === '/' && isRegexPosition(source, i)) { mode = 'regex'; i++; continue }
-    if (c === '{') { depth++; i++; continue }
+    if (c === '/' && next === '/') {
+      mode = 'line-comment'
+      i += 2
+      continue
+    }
+    if (c === '/' && next === '*') {
+      mode = 'block-comment'
+      i += 2
+      continue
+    }
+    if (c === "'") {
+      mode = 'single'
+      i++
+      continue
+    }
+    if (c === '"') {
+      mode = 'double'
+      i++
+      continue
+    }
+    if (c === '`') {
+      mode = 'template'
+      i++
+      continue
+    }
+    if (c === '/' && isRegexPosition(source, i)) {
+      mode = 'regex'
+      i++
+      continue
+    }
+    if (c === '{') {
+      depth++
+      i++
+      continue
+    }
     if (c === '}') {
       depth--
       i++
@@ -153,7 +195,8 @@ function fail(message) {
 
 function assertPhases(value) {
   if (value === undefined) return undefined
-  if (!Array.isArray(value)) fail('`meta.phases` must be an array of { title, detail?, model? } objects.')
+  if (!Array.isArray(value))
+    fail('`meta.phases` must be an array of { title, detail?, model? } objects.')
   return value.map((entry, index) => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
       fail(`\`meta.phases[${index}]\` must be an object with a \`title\`.`)
@@ -168,7 +211,11 @@ function assertPhases(value) {
     if (model !== undefined && typeof model !== 'string') {
       fail(`\`meta.phases[${index}].model\` must be a string.`)
     }
-    return { title, ...(detail !== undefined ? { detail } : {}), ...(model !== undefined ? { model } : {}) }
+    return {
+      title,
+      ...(detail !== undefined ? { detail } : {}),
+      ...(model !== undefined ? { model } : {}),
+    }
   })
 }
 
@@ -183,12 +230,13 @@ export function extractMeta(source) {
   if (!declaration) {
     fail(
       'A workflow script must begin with `export const meta = { name, description }`.\n' +
-      PURE_LITERAL_HINT,
+        PURE_LITERAL_HINT,
     )
   }
 
   const open = source.indexOf('{', declaration.index + declaration[0].length)
-  if (open === -1) fail('`export const meta` must be assigned an object literal.\n' + PURE_LITERAL_HINT)
+  if (open === -1)
+    fail('`export const meta` must be assigned an object literal.\n' + PURE_LITERAL_HINT)
 
   const { end: close, sawInterpolation } = scanObjectLiteral(source, open)
   if (close === -1) fail('`meta` object literal is never closed — check for an unbalanced `{`.')
@@ -211,14 +259,16 @@ export function extractMeta(source) {
     // host thread, before the script ever reaches the worker. Without a bound it
     // would wedge pi itself. `timeout` only governs synchronous execution, which
     // is all a literal can contain.
-    value = new Script(`(${fragment})`, { filename: 'workflow-meta.js' })
-      .runInContext(createContext({}), { timeout: META_EVAL_TIMEOUT_MS })
+    value = new Script(`(${fragment})`, { filename: 'workflow-meta.js' }).runInContext(
+      createContext({}),
+      { timeout: META_EVAL_TIMEOUT_MS },
+    )
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
     if (/timed out|Script execution/i.test(detail)) {
       fail(
         `\`meta\` did not finish evaluating within ${META_EVAL_TIMEOUT_MS}ms — it must be a literal, not a computation.\n` +
-        PURE_LITERAL_HINT,
+          PURE_LITERAL_HINT,
       )
     }
     fail(`\`meta\` could not be evaluated: ${detail}\n${PURE_LITERAL_HINT}`)

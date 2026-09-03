@@ -17,6 +17,17 @@ hooks = [
   { id = "workflow-syntax", name = "workflow script syntax (node --check, pi-subagents wrapper shape)", entry = "node scripts/check-workflow-syntax.mjs", language = "system", files = "\\.js$" },
 ]
 
+# ── Biome lint/format gate (scripts/ only) ─────────────────────────────
+# The four root pi-plugin-*.js workflow scripts have top-level return/await
+# (pi-subagents wrapper shape) and must NEVER be run through Biome. biome.json
+# scopes the project to scripts/** (files.includes) and ignores the root
+# pi-plugin-*.js via overrides; this hook further restricts files to ^scripts/.
+[[repos]]
+repo = "local"
+hooks = [
+  { id = "biome", name = "Biome check (scripts/ only)", entry = "npx biome check", language = "system", files = "^scripts/" },
+]
+
 # ── GitHub Actions workflow lint gate ───────────────────────────────────
 # actionlint is installed on the machine (Homebrew); prefer a local system
 # hook so the tool binary on PATH is used directly. Fall back to the

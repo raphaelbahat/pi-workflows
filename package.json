@@ -1,5 +1,8 @@
 {
   "name": "pi-workflows",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "devDependencies": {
+    "@biomejs/biome": "2.5.12"
+  }
 }
