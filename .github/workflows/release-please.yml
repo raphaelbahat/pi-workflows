@@ -4,6 +4,10 @@ on:
   push:
     branches: [master]
 
+concurrency:
+  group: release
+  cancel-in-progress: true
+
 permissions:
   contents: write
   pull-requests: write
