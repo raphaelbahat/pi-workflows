@@ -29,13 +29,14 @@ hooks = [
 ]
 
 # ── GitHub Actions workflow lint gate ───────────────────────────────────
-# actionlint is installed on the machine (Homebrew); prefer a local system
-# hook so the tool binary on PATH is used directly. Fall back to the
-# rhysd/actionlint pre-commit repo when actionlint is not available.
+# rhysd/actionlint pre-commit repo (language: golang — Go is preinstalled on
+# GitHub runners). The actionlint binary is NOT on CI runner PATH, so a
+# local system hook fails there; the remote repo form auto-provisions it.
 [[repos]]
-repo = "local"
+repo = "https://github.com/rhysd/actionlint"
+rev = "v1.7.12"
 hooks = [
-  { id = "actionlint", name = "GitHub Actions workflow linter (actionlint)", entry = "actionlint", language = "system", files = "^\\.github/workflows/.*\\.ya?ml$" },
+  { id = "actionlint" },
 ]
 
 # ── Built-in hooks (offline, Rust-native) ────────────────────────────────
