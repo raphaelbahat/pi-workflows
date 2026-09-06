@@ -67,3 +67,16 @@ node extensions/checkpoint-bridge/smoke.mjs
 
 Runs three in-process scenarios (hosted relay, local-host call, no-host
 fallback) against a mocked bus and UI — no pi process needed.
+
+## Publishing (npm)
+
+The extension ships to npm as [`pi-checkpoint-bridge`](https://www.npmjs.com/package/pi-checkpoint-bridge)
+via OIDC trusted publishing — no `NPM_TOKEN` secret. `.github/workflows/release-publish.yml` publishes
+whenever a release-please release touches `extensions/checkpoint-bridge/`.
+
+**One-time setup on npmjs.com** (package → Settings → Trusted Publisher) — the workflow field takes the
+workflow **filename**, not its display name:
+
+- Repository: `raphaelbahat/pi-workflows`
+- Workflow filename: `release-publish.yml`
+- Environment: leave empty
