@@ -1,4 +1,4 @@
-# ADR-0001: Workflow family with a grill-bridge checkpoint channel for OpenSpec integration
+# ADR-0001: Workflow family with a checkpoint-bridge user-interaction channel for OpenSpec integration
 
 ## Status
 
@@ -16,14 +16,14 @@ Two structural facts constrain any integration:
 ## Decision
 
 1. **A family of small phase-shaped workflows, composed one level deep — not one mega-workflow, not per-recipe wrappers, not per-schema forks.** Workflows drive OpenSpec's machine contract (`openspec status --json` / `instructions --json`) so they stay schema-agnostic. The host session permanently owns user interviews, `archive` (including its inline delta-spec sync), and final approvals. The first member is `openspec-validate-change`, a read-only sweep; `openspec-plan-change`, `openspec-apply-change`, and an `openspec-campaign` orchestrator follow only behind measured pilots.
-2. **The checkpoint channel is a `grill-bridge` pi extension.** Sub-agent sessions call an `ask_user` tool; the bridge relays the questions over the in-process `pi.events` bus to the main session's `ctx.ui` dialogs and returns the answers as the tool result, so a grill round happens inside the workflow where OpenSpec's skills expect it. Structured `needs_input` returns remain the fallback when no host session is armed, on dialog timeout or cancellation, and in headless runs.
-3. **Scope discipline.** Workflow agents expose the bridge narrowly through agent frontmatter (`extensions: [grill-bridge]`); ordinary agents do not gain a user-facing channel by accident.
+2. **The checkpoint channel is the `checkpoint-bridge` pi extension.** Sub-agent sessions call an `ask_user_via_host` tool; the bridge relays the questions over a process-global relay bus to the main session's `ctx.ui` dialogs and returns the answers as the tool result, so a grill round happens inside the workflow where OpenSpec's skills expect it. Structured `needs_input` returns remain the fallback when no host session is armed, on dialog timeout or cancellation, and in headless runs.
+3. **Scope discipline.** Workflow agents expose the bridge narrowly through agent frontmatter (`extensions: [checkpoint-bridge]`); ordinary agents do not gain a user-facing channel by accident.
 
 ## Consequences
 
 - **Easier:** grill rounds preserve the human's scope authority inside workflows; validation sweeps and mechanical fix loops leave the main session's context; the family degrades gracefully (timeout/cancel → `needs_input`) in headless runs; the same bridge design works unchanged if a session is later hosted under `pi --mode rpc` or the SDK, because `ctx.ui` dialogs translate to the Extension UI Protocol.
-- **Harder:** a new extension surface to maintain — host-claim lifecycle across session start/shutdown, serial dialog queueing when several sub-agent sessions ask at once, and timeout budgets. A pending dialog blocks that agent's `agent()` call, bounded by timeouts. Concurrent askers queue serially at the host, so workflows should batch questions into one `ask_user` call.
-- **Follow-ups:** prototype the bridge before workflow adoption (this repository, `extensions/grill-bridge/`); gate each additional workflow on a measured pilot against the archived 10-change campaign; revisit RPC-mode hosting when embedding into IDE/UI clients.
+- **Harder:** a new extension surface to maintain — host-claim lifecycle across session start/shutdown, serial dialog queueing when several sub-agent sessions ask at once, and timeout budgets. A pending dialog blocks that agent's `agent()` call, bounded by timeouts. Concurrent askers queue serially at the host, so workflows should batch questions into one `ask_user_via_host` call.
+- **Follow-ups:** prototype the bridge before workflow adoption (this repository, `extensions/checkpoint-bridge/`); gate each additional workflow on a measured pilot against the archived 10-change campaign; revisit RPC-mode hosting when embedding into IDE/UI clients.
 
 ## Alternatives considered
 
@@ -33,6 +33,8 @@ Two structural facts constrain any integration:
 
 ## Amendment (2026-09-06, post-implementation)
 
-Live integration testing corrected one design assumption: `pi.events` is **session-scoped in practice**. A request emitted on a sub-agent session's bus never reached the main session's listener (attempts 1–2: tool timeout with no host reply and no TUI change), while the `globalThis` host claim demonstrably crossed sessions in the same process. The shipped relay therefore uses a **process-global bus** — a `Symbol.for("grill-bridge:bus")` EventEmitter on `globalThis`, the same mechanism as the claim — plus a fire-and-forget `ctx.ui.notify` receipt so request arrival is observable independently of dialog rendering.
+Live integration testing corrected one design assumption: `pi.events` is **session-scoped in practice**. A request emitted on a sub-agent session's bus never reached the main session's listener (attempts 1–2: tool timeout with no host reply and no TUI change), while the `globalThis` host claim demonstrably crossed sessions in the same process. The shipped relay therefore uses a **process-global bus** — a `Symbol.for("checkpoint-bridge:bus")` EventEmitter on `globalThis`, the same mechanism as the claim — plus a fire-and-forget `ctx.ui.notify` receipt so request arrival is observable independently of dialog rendering.
 
-Attempt 3 then proved the full channel end-to-end in a real pi 0.85.1 process: sub-agent `ask_user` call → global-bus relay → main-session TUI dialog → human answer → tool result `{"status":"ok","answers":[...]}` in ~17 s. Headless `pi -p` separately confirmed the `no-host` fallback. All other decision content stands unchanged.
+Attempt 3 then proved the full channel end-to-end in a real pi 0.85.1 process: sub-agent `ask_user_via_host` call → global-bus relay → main-session TUI dialog → human answer → tool result `{"status":"ok","answers":[...]}` in ~17 s. Headless `pi -p` separately confirmed the `no-host` fallback. All other decision content stands unchanged.
+
+**Rename note (2026-09-06):** the extension was originally named `grill-bridge` with a tool named `ask_user`; both were renamed — `checkpoint-bridge` / `ask_user_via_host` — because the original names over-scoped the extension to the grill-me skill and invited confusion with the built-in `ask_user_question` tool. The extension serves every user-interaction checkpoint of the OpenSpec workflow family, not only grill rounds. Decision text above reflects the current names.

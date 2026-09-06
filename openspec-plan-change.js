@@ -1,10 +1,10 @@
 export const meta = {
   name: 'openspec-plan-change',
   description:
-    'Schema-driven OpenSpec authoring for ONE change: resolve the artifact graph via the CLI, author the next ready artifact from its template/instruction, QA it, and report. Modes: scaffold (create + first instructions, no write) | one (default; author exactly one artifact). Ambiguities go through the grill-bridge ask_user tool; without a bridge the workflow returns structured needs_input instead of guessing. Never applies, never archives.',
+    'Schema-driven OpenSpec authoring for ONE change: resolve the artifact graph via the CLI, author the next ready artifact from its template/instruction, QA it, and report. Modes: scaffold (create + first instructions, no write) | one (default; author exactly one artifact). Ambiguities go through the checkpoint-bridge ask_user_via_host tool; without the bridge the workflow returns structured needs_input instead of guessing. Never applies, never archives.',
   phases: [
     { title: 'Resolve', detail: 'optional new change + status --json graph snapshot' },
-    { title: 'Author', detail: 'write the first ready artifact from its template; grill via ask_user if armed' },
+    { title: 'Author', detail: 'write the first ready artifact from its template; grill via ask_user_via_host if armed' },
     { title: 'QA', detail: 'template coverage, no leaked rules/context, dependencies cited' },
   ],
 }
@@ -138,8 +138,8 @@ log('Authoring artifact: ' + target.id + ' (of ' + readyArtifacts.length + ' rea
 // --- Phase: Author ----------------------------------------------------------
 const GRILL = [
   'CHECKPOINT RULE (human authority): if material scope is genuinely unknown — an ambiguity whose answer would change',
-  'what you write — call the ask_user tool ONCE with ALL your questions batched (it relays to the human via the',
-  'grill-bridge). If ask_user returns status "ok", use the answers. For ANY other status (no-host, timeout,',
+  'what you write — call the ask_user_via_host tool ONCE with ALL your questions batched (it relays to the human via the',
+  'checkpoint-bridge). If ask_user_via_host returns status "ok", use the answers. For ANY other status (no-host, timeout,',
   'timeout-or-cancelled, cancelled, error) DO NOT guess and DO NOT retry: return action "needs_input" with the',
   'question field stating exactly what the host session must decide.',
 ].join('\n')

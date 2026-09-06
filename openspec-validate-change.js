@@ -95,7 +95,7 @@ const GATE_SCHEMA = {
 const A = (typeof args === 'string') ? JSON.parse(args) : (args || {})
 const CHANGE = A.change
 const ROOT = A.repoRoot ? 'cd ' + A.repoRoot + ' && ' : ''
-const REPORT = A.reportFile || '.scratch/openspec-validate-report-' + (CHANGE || 'change') + '.md'
+const REPORT = A.reportFile || '.openspec-reports/openspec-validate-report-' + (CHANGE || 'change') + '.md'
 if (!CHANGE) {
   throw new Error('args.change is required — the kebab-case name of an active OpenSpec change')
 }

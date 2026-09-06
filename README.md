@@ -13,8 +13,8 @@ Distributed to projects via the Skillshare global extra `pi-workflows`
 | `pi-plugin-stack-advisor.js` | 4 persona-lensed advisors + 1 unbiased propose complementary, non-conflicting plugin stacks; synthesizer merges them |
 | `pi-plugin-pipeline.js` | Orchestrator: eval → comparison → (optional, `args.stack`) stack recommendations |
 | `openspec-validate-change.js` | Read-only validation sweep for one OpenSpec change: 4 parallel reviewer dimensions (completeness/correctness/coherence/unbiased) + strict CLI gate → CRITICAL/WARNING/SUGGESTION scorecard report |
-| `openspec-plan-change.js` | Schema-driven authoring for one change: resolve graph via CLI, author the first ready artifact from its template, QA. Modes: `scaffold`\|`one`. Grill via the grill-bridge `ask_user` tool; `needs_input` fallback. Never applies/archives |
-| `extensions/grill-bridge/` | pi extension (not a workflow): relays sub-agent `ask_user` calls over the in-process `pi.events` bus to the main session's UI — the ADR-0001 checkpoint channel |
+| `openspec-plan-change.js` | Schema-driven authoring for one change: resolve graph via CLI, author the first ready artifact from its template, QA. Modes: `scaffold`\|`one`. Grill via the checkpoint-bridge `ask_user_via_host` tool; `needs_input` fallback. Never applies/archives |
+| `extensions/checkpoint-bridge/` | pi extension (not a workflow): relays sub-agent `ask_user_via_host` calls over a process-global bus to the main session's UI — the ADR-0001 checkpoint channel (pi.events proved session-scoped; see the ADR amendment) |
 
 ## Args contracts
 
@@ -45,7 +45,7 @@ Distributed to projects via the Skillshare global extra `pi-workflows`
 ### openspec-validate-change
 - `change` **(required)** — kebab-case name of an active OpenSpec change
 - `repoRoot` — absolute path to the repo holding the change (default: the agents' cwd)
-- `reportFile` — scorecard output path (default `.scratch/openspec-validate-report-<change>.md`)
+- `reportFile` — scorecard output path (default `.openspec-reports/openspec-validate-report-<change>.md`)
 - Read-only: reviewers never edit artifacts; findings return to the host session
 
 ### openspec-plan-change
@@ -54,7 +54,7 @@ Distributed to projects via the Skillshare global extra `pi-workflows`
 - `create` — set truthy to let the resolve stage run `openspec new change` (host pre-approves by passing it)
 - `intent` — optional host-authored brief for the author agent
 - `repoRoot`, `store` — repo root for the CLI; store id appended as `--store`
-- Writes ONLY the one assigned artifact; ambiguities go through grill-bridge `ask_user` (armed automatically in sessions that load the extension), otherwise return `needs_input`
+- Writes ONLY the one assigned artifact; ambiguities go through checkpoint-bridge `ask_user_via_host` (armed automatically in sessions that load the extension), otherwise return `needs_input`
 
 ## Invocation
 

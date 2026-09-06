@@ -1,14 +1,14 @@
-// Smoke test for the grill-bridge extension — plain node, no pi process.
+// Smoke test for the checkpoint-bridge extension — plain node, no pi process.
 //
 // Scenarios:
-//   1. hosted relay: an agent-session instance calls ask_user; the host
+//   1. hosted relay: an agent-session instance calls ask_user_via_host; the host
 //      instance answers via mocked ctx.ui dialogs -> status ok + answers.
-//   2. local host: the host instance's own model calls ask_user -> answered
+//   2. local host: the host instance's own model calls ask_user_via_host -> answered
 //      directly, no bus round-trip.
 //   3. no host: a fresh process scope without a claim -> status no-host
 //      (the needs_input fallback contract).
 //
-// Run: node extensions/grill-bridge/smoke.mjs
+// Run: node extensions/checkpoint-bridge/smoke.mjs
 
 import { EventEmitter } from 'node:events'
 import assert from 'node:assert/strict'
@@ -47,7 +47,7 @@ function makeCtx(sessionFile, ui) {
 // Host-claim isolation across smoke runs: the extension stores the claim on
 // Symbol.for — clean it between scenarios.
 function resetClaim() {
-  delete globalThis[Symbol.for('grill-bridge:host-claim')]
+  delete globalThis[Symbol.for('checkpoint-bridge:host-claim')]
 }
 
 async function scenario1() {
@@ -73,8 +73,8 @@ async function scenario1() {
   const agentCtx = makeCtx('/tmp/sessions/agent-1.jsonl', {})
   fire(agentPi, 'session_start', { reason: 'startup' }, agentCtx)
 
-  const tool = agentPi.__tools.get('ask_user')
-  assert.ok(tool, 'ask_user registered in agent session')
+  const tool = agentPi.__tools.get('ask_user_via_host')
+  assert.ok(tool, 'ask_user_via_host registered in agent session')
   const result = await tool.execute('call-1', {
     questions: [
       { question: 'Naming convention?', options: ['camelCase', 'kebab-case'] },
@@ -99,7 +99,7 @@ async function scenario2() {
   createBridge(hostPi)
   fire(hostPi, 'session_start', { reason: 'startup' }, hostCtx)
 
-  const tool = hostPi.__tools.get('ask_user')
+  const tool = hostPi.__tools.get('ask_user_via_host')
   const result = await tool.execute('call-2', {
     questions: [{ question: 'Keep the needs_input fallback?' }],
   }, undefined, undefined, hostCtx)
@@ -119,9 +119,9 @@ async function scenario3() {
   createBridge(lonePi)
   fire(lonePi, 'session_start', { reason: 'startup' }, loneCtx)
   // Simulate the host going away without shutdown: drop the claim.
-  delete globalThis[Symbol.for('grill-bridge:host-claim')]
+  delete globalThis[Symbol.for('checkpoint-bridge:host-claim')]
 
-  const tool = lonePi.__tools.get('ask_user')
+  const tool = lonePi.__tools.get('ask_user_via_host')
   const result = await tool.execute('call-3', {
     questions: [{ question: 'Anyone there?' }],
   }, undefined, undefined, loneCtx)

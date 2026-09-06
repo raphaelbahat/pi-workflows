@@ -1,4 +1,4 @@
-// grill-bridge — a pi extension that lets sub-agent sessions ask the human
+// checkpoint-bridge — a pi extension that lets sub-agent sessions ask the human
 // user questions through the main session's UI.
 //
 // Design (docs/adr/ADR-0001-*.md): pi-subagents spawns sub-agent sessions in
@@ -8,7 +8,7 @@
 // practice: a request emitted on a sub-agent session's pi.events never
 // reached the main session's listener (live test 2026-09-06), while the
 // globalThis host claim demonstrably crossed sessions. An agent session
-// calls the `ask_user` tool; the request travels over the global bus to the
+// calls the `ask_user_via_host` tool; the request travels over the global bus to the
 // instance that owns the host claim (the main session — it always starts
 // first), which renders the questions as ctx.ui dialogs and emits the answers
 // back. `needs_input`-style structured returns remain the fallback when no
@@ -22,7 +22,7 @@
 import { EventEmitter } from 'node:events'
 import { Type } from 'typebox'
 
-const NS = 'grill-bridge'
+const NS = 'checkpoint-bridge'
 const REQUEST = `${NS}:request`
 const RESPONSE = `${NS}:response`
 // Cross-instance host claim and relay bus. Symbol.for keeps both shared across
@@ -30,7 +30,7 @@ const RESPONSE = `${NS}:response`
 const HOST_CLAIM = Symbol.for(`${NS}:host-claim`)
 const BUS_SYMBOL = Symbol.for(`${NS}:bus`)
 
-const DEFAULT_TIMEOUT_MS = 300_000 // overall budget for one ask_user call
+const DEFAULT_TIMEOUT_MS = 300_000 // overall budget for one ask_user_via_host call
 const DIALOG_TIMEOUT_MS = 180_000 // per-question dialog budget
 let requestCounter = 0
 
@@ -143,7 +143,7 @@ export default function (pi) {
         // Fire-and-forget receipt proof: visible even if the dialog itself
         // fails to render.
         try {
-          ctx.ui.notify?.(`grill-bridge: a sub-agent is asking ${request.questions?.length ?? 0} question(s)`, 'info')
+          ctx.ui.notify?.(`checkpoint-bridge: a sub-agent is asking ${request.questions?.length ?? 0} question(s)`, 'info')
         } catch {}
         const result = await runDialogs(request.questions ?? [], ctx, dialogTimeoutFor(request))
         bus.emit(RESPONSE, { requestId: request.requestId, ...result })
@@ -160,13 +160,13 @@ export default function (pi) {
 
   // Agent side: the tool the LLM calls.
   pi.registerTool({
-    name: 'ask_user',
-    label: 'Ask the user (grill bridge)',
+    name: 'ask_user_via_host',
+    label: 'Ask the user (checkpoint bridge)',
     description:
-      "Ask the human user one or more questions and wait for their answers. The questions are relayed to the main session's UI by the grill-bridge extension; batch related questions into one call. Use this for genuine ambiguities that would materially change what you produce — never for information you can obtain from files or the openspec CLI. Returns {\"status\": \"ok\"|\"timeout-or-cancelled\"|\"timeout\"|\"cancelled\"|\"no-host\"|\"error\", \"answers\": [{\"question\", \"answer\"}], \"note\"?}.",
-    promptSnippet: 'ask_user relays questions to the human user via the main session and waits for answers',
+      "Ask the human user one or more questions and wait for their answers. The questions are relayed to the main session's UI by the checkpoint-bridge extension; batch related questions into one call. Use this for genuine ambiguities that would materially change what you produce — never for information you can obtain from files or the openspec CLI. Returns {\"status\": \"ok\"|\"timeout-or-cancelled\"|\"timeout\"|\"cancelled\"|\"no-host\"|\"error\", \"answers\": [{\"question\", \"answer\"}], \"note\"?.}",
+    promptSnippet: 'ask_user_via_host relays questions to the human user via the main session and waits for answers',
     promptGuidelines: [
-      'Use ask_user when a requirement is ambiguous and the answer would materially change your output; batch all questions into a single call and keep each question answerable in one line.',
+      'Use ask_user_via_host when a requirement is ambiguous and the answer would materially change your output; batch all questions into a single call and keep each question answerable in one line.',
     ],
     parameters: Type.Object({
       questions: Type.Array(
@@ -187,7 +187,7 @@ export default function (pi) {
       const noHost = {
         status: 'no-host',
         answers: [],
-        note: 'No main session has the grill bridge armed (headless run, or host session gone). Fall back to a structured needs_input return instead of guessing.',
+        note: 'No main session has the checkpoint bridge armed (headless run, or host session gone). Fall back to a structured needs_input return instead of guessing.',
       }
 
       // This instance IS the host (the main session's own model called the
