@@ -12,6 +12,9 @@ Distributed to projects via the Skillshare global extra `pi-workflows`
 | `pi-plugin-comparison.js` | Context-safe two-stage synthesis: parallel digest agents (shards) extract totals/strengths/weaknesses/families, one composer writes the ranked comparison |
 | `pi-plugin-stack-advisor.js` | 4 persona-lensed advisors + 1 unbiased propose complementary, non-conflicting plugin stacks; synthesizer merges them |
 | `pi-plugin-pipeline.js` | Orchestrator: eval → comparison → (optional, `args.stack`) stack recommendations |
+| `openspec-validate-change.js` | Read-only validation sweep for one OpenSpec change: 4 parallel reviewer dimensions (completeness/correctness/coherence/unbiased) + strict CLI gate → CRITICAL/WARNING/SUGGESTION scorecard report |
+| `openspec-plan-change.js` | Schema-driven authoring for one change: resolve graph via CLI, author the first ready artifact from its template, QA. Modes: `scaffold`\|`one`. Grill via the grill-bridge `ask_user` tool; `needs_input` fallback. Never applies/archives |
+| `extensions/grill-bridge/` | pi extension (not a workflow): relays sub-agent `ask_user` calls over the in-process `pi.events` bus to the main session's UI — the ADR-0001 checkpoint channel |
 
 ## Args contracts
 
@@ -38,6 +41,20 @@ Distributed to projects via the Skillshare global extra `pi-workflows`
 - `plugins`, `outDir`, `focus` — as eval
 - `comparisonFile`, `stackOutputFile` — output names
 - `stack` — set truthy to also run the stack advisor
+
+### openspec-validate-change
+- `change` **(required)** — kebab-case name of an active OpenSpec change
+- `repoRoot` — absolute path to the repo holding the change (default: the agents' cwd)
+- `reportFile` — scorecard output path (default `.scratch/openspec-validate-report-<change>.md`)
+- Read-only: reviewers never edit artifacts; findings return to the host session
+
+### openspec-plan-change
+- `change` **(required)** — kebab-case change name
+- `mode` — `one` (default: author exactly the first `ready` artifact) or `scaffold` (create + report first instructions, no write); `apply-ready` is refused pending its measured pilot (ADR-0001)
+- `create` — set truthy to let the resolve stage run `openspec new change` (host pre-approves by passing it)
+- `intent` — optional host-authored brief for the author agent
+- `repoRoot`, `store` — repo root for the CLI; store id appended as `--store`
+- Writes ONLY the one assigned artifact; ambiguities go through grill-bridge `ask_user` (armed automatically in sessions that load the extension), otherwise return `needs_input`
 
 ## Invocation
 
@@ -67,6 +84,11 @@ pi -p --subagents-workflow-file="$HOME/pi-workflows/pi-plugin-eval.js"   # use t
 
 ## Validation history
 
+- 2026-09-06: openspec family added (ADR-0001): `openspec-validate-change` dry-run on `add-cgc-agent-guide`
+  matched the manual baseline — strict gate PASS, 0 CRITICAL false-positives, 60 claims checked, and it caught
+  a real staleness issue (in-force-ADR manifest predating ADR-0008/0009) that write-time validation could not;
+  6 agents, ~527k tokens, ~12 min. `openspec-plan-change` shipped in `one`/`scaffold` modes; `apply-ready`,
+  apply-pipelines and a campaign orchestrator stay gated behind measured pilots.
 - 2026-09-02: initial genericization from the 54-plugin context-optimization sweep
   (eval/verify/gate/skip-if-exists/tool-discipline hardened prompts; digest+compose synthesis).
 - 2026-09-02: discovered pi-subagents resolver skips symlinked workflows in `.pi/workflows/` —
