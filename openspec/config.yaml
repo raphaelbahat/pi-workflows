@@ -1,0 +1,31 @@
+schema: intent-driven-strict
+
+context: |
+  Repo: pi-subagents workflow scripts for the Pi coding agent — a family of saved
+  workflow scripts (`pi-plugin-*`, `openspec-*`) plus `scripts/lib/` helpers and, under
+  `extensions/`, pi extensions. JavaScript only (ESM, "type": "module"); workflow scripts
+  are engine-shaped async function bodies (top-level await/return legal; `export const
+  meta` header) validated by `node scripts/check-workflow-syntax.mjs` — the CI gate; a
+  bare `node --check` fails by design on top-level return. pi extensions load via jiti
+  and may use dependencies from the root package.json. Releases are tags + GitHub
+  Releases via release-please: conventional commits, GPG-signed; CHANGELOG is generated,
+  never hand-edited. Hygiene via prek. Edit at source — installed copies are sync
+  outputs, never edit targets. Architectural decisions are recorded as Nygard-style
+  ADRs under docs/adr/ (see the architectural-decision-records skill).
+
+rules:
+  proposal:
+    - Must use grill-me skill
+  design:
+    - Must use c4-architecture skill
+  adr:
+    - Must use architectural-decision-records skill
+  specs:
+    - Must use gherkin-authoring skill
+  validate:
+    - Sub-agents are read-only — they validate against live docs and return verdicts; they never edit files
+    - "Access documentation in order: Context7, then jina or exa, then a native web fetch tool (e.g., WebFetch)"
+    - If sub-agent deployment fails or is unavailable, run the validation in the main agent (session) instead
+    - Every verdict must cite a source URL; flag anything without evidence as UNCERTAIN rather than guessing
+    - Do not approve edits yourself — always prompt the user before revising tasks.md or related artifacts
+    - After revision, the change must still pass `openspec validate --strict` and all artifacts must remain coherent with one another
