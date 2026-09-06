@@ -1,9 +1,13 @@
 # Contributing
 
-This repository holds four pi-subagents workflow scripts (`pi-plugin-eval.js`,
-`pi-plugin-comparison.js`, `pi-plugin-stack-advisor.js`, `pi-plugin-pipeline.js`)
-plus their README. It does **not** publish to npm — releases are tags +
-GitHub Releases + `CHANGELOG.md`, fully automated via release-please.
+This repository holds the pi-subagents workflow scripts, grouped by family under
+`workflows/pi-plugin/` (`pi-plugin-eval.js`, `pi-plugin-comparison.js`,
+`pi-plugin-stack-advisor.js`, `pi-plugin-pipeline.js`) and `workflows/openspec/`
+(`openspec-validate-change.js`, `openspec-plan-change.js`, …), plus the
+`checkpoint-bridge` extension under `extensions/`. The workflow scripts do **not**
+publish to npm — releases are tags + GitHub Releases + `CHANGELOG.md`, fully
+automated via release-please. The checkpoint-bridge extension **does** publish to
+npm as `pi-checkpoint-bridge` (see `.github/workflows/release-publish.yml`).
 
 ## Rules
 
@@ -15,10 +19,10 @@ GitHub Releases + `CHANGELOG.md`, fully automated via release-please.
 
    ```bash
    prek run -a                                    # hygiene builtins + syntax gate
-   node scripts/check-workflow-syntax.mjs pi-plugin-*.js   # what CI runs
+   node scripts/check-workflow-syntax.mjs workflows/pi-plugin/*.js workflows/openspec/*.js   # what CI runs
    ```
 
-   A bare `node --check pi-plugin-eval.js` always fails by design (top-level
+   A bare `node --check workflows/pi-plugin/pi-plugin-eval.js` always fails by design (top-level
    `return`); use the gate script, which reproduces the engine's wrapper
    shape. `package.json` carries `"type": "module"` for the ESM `meta`/import
    parsing.

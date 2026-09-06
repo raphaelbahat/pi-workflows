@@ -1,19 +1,20 @@
 # pi-workflows
 
 Reusable, args-driven [pi-subagents](https://github.com/tintinweb/pi-subagents) workflows.
-Distributed to projects via the Skillshare global extra `pi-workflows`
-(source = this repo, mode = **copy** — real files at `<project>/.pi/workflows/`).
+Distributed to projects via the Skillshare global extras `pi-workflows-openspec` and
+`pi-workflows-plugins` (sources = this repo's `workflows/` family dirs, mode = **copy**, files
+land flat by basename at `<project>/.pi/workflows/` — the resolver scans non-recursively).
 
 ## Files
 
 | Workflow | Purpose |
 |---|---|
-| `pi-plugin-eval.js` | One high-effort research agent per plugin reads ALL provided URLs and writes a structured report; per-report QA verifier; `gate` on report existence; skip-if-report-exists (idempotent re-runs) |
-| `pi-plugin-comparison.js` | Context-safe two-stage synthesis: parallel digest agents (shards) extract totals/strengths/weaknesses/families, one composer writes the ranked comparison |
-| `pi-plugin-stack-advisor.js` | 4 persona-lensed advisors + 1 unbiased propose complementary, non-conflicting plugin stacks; synthesizer merges them |
-| `pi-plugin-pipeline.js` | Orchestrator: eval → comparison → (optional, `args.stack`) stack recommendations |
-| `openspec-validate-change.js` | Read-only validation sweep for one OpenSpec change: 4 parallel reviewer dimensions (completeness/correctness/coherence/unbiased) + strict CLI gate → CRITICAL/WARNING/SUGGESTION scorecard report |
-| `openspec-plan-change.js` | Schema-driven authoring for one change: resolve graph via CLI, author the first ready artifact from its template, QA. Modes: `scaffold`\|`one`. Grill via the checkpoint-bridge `ask_user_via_host` tool; `needs_input` fallback. Never applies/archives |
+| `workflows/pi-plugin/pi-plugin-eval.js` | One high-effort research agent per plugin reads ALL provided URLs and writes a structured report; per-report QA verifier; `gate` on report existence; skip-if-report-exists (idempotent re-runs) |
+| `workflows/pi-plugin/pi-plugin-comparison.js` | Context-safe two-stage synthesis: parallel digest agents (shards) extract totals/strengths/weaknesses/families, one composer writes the ranked comparison |
+| `workflows/pi-plugin/pi-plugin-stack-advisor.js` | 4 persona-lensed advisors + 1 unbiased propose complementary, non-conflicting plugin stacks; synthesizer merges them |
+| `workflows/pi-plugin/pi-plugin-pipeline.js` | Orchestrator: eval → comparison → (optional, `args.stack`) stack recommendations |
+| `workflows/openspec/openspec-validate-change.js` | Read-only validation sweep for one OpenSpec change: 4 parallel reviewer dimensions (completeness/correctness/coherence/unbiased) + strict CLI gate → CRITICAL/WARNING/SUGGESTION scorecard report |
+| `workflows/openspec/openspec-plan-change.js` | Schema-driven authoring for one change: resolve graph via CLI, author the first ready artifact from its template, QA. Modes: `scaffold`\|`one`. Grill via the checkpoint-bridge `ask_user_via_host` tool; `needs_input` fallback. Never applies/archives |
 | `extensions/checkpoint-bridge/` | pi extension (not a workflow): relays sub-agent `ask_user_via_host` calls over a process-global bus to the main session's UI — the ADR-0001 checkpoint channel (pi.events proved session-scoped; see the ADR amendment) |
 
 ## Args contracts
@@ -54,16 +55,16 @@ Distributed to projects via the Skillshare global extra `pi-workflows`
 - `create` — set truthy to let the resolve stage run `openspec new change` (host pre-approves by passing it)
 - `intent` — optional host-authored brief for the author agent
 - `repoRoot`, `store` — repo root for the CLI; store id appended as `--store`
-- Writes ONLY the one assigned artifact; ambiguities go through checkpoint-bridge `ask_user_via_host` (armed automatically in sessions that load the extension), otherwise return `needs_input`
+- Requires the checkpoint-bridge extension: if `ask_user_via_host` is absent, the run returns a friendly `checkpoint-bridge-not-installed` error instead of authoring (install: `pi install npm:pi-checkpoint-bridge`)
 
 ## Invocation
 
 ```bash
-# by name (inside a project with .pi/workflows populated by the skillshare extra)
+# by name (inside a project with .pi/workflows populated by the skillshare extras)
 #   just ask the model: run the pi-plugin-eval workflow with args {...}
 
 # by path (anywhere, including headless)
-pi -p --subagents-workflow-file="$HOME/pi-workflows/pi-plugin-eval.js"   # use the = form
+pi -p --subagents-workflow-file="$HOME/pi-workflows/workflows/pi-plugin/pi-plugin-eval.js"   # use the = form
 ```
 
 `args` may be passed as a JSON object or a JSON-encoded string (both handled).
@@ -79,8 +80,8 @@ pi -p --subagents-workflow-file="$HOME/pi-workflows/pi-plugin-eval.js"   # use t
   discovery. Verified 2026-09-02: symlinked workflow -> "No saved workflow named ..."; real copy -> resolves.
 - Workflow scripts must keep the `export const meta = { name, description }` declaration (the
   resolver's marker), a pure-literal `meta`, and no `Date.now`/`Math.random` (determinism for resume).
-- Add new projects as targets: `skillshare extras pi-workflows --add-target /path/to/project/.pi/workflows -g`
-  then `skillshare sync extras`. Retire scratch projects with `--remove-target … --prune`.
+- Add new projects as targets (both extras, same target): `skillshare extras pi-workflows-openspec --add-target /path/to/project/.pi/workflows -g && skillshare extras pi-workflows-plugins --add-target /path/to/project/.pi/workflows -g`
+  then `skillshare sync extras -g --force`. Retire scratch projects with `--remove-target … --prune` on both extras.
 
 ## Validation history
 

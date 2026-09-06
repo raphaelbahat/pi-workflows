@@ -47,6 +47,12 @@ const GRAPH_SCHEMA = {
         required: ['id', 'status'],
       },
     },
+    tasks: {
+      type: 'object',
+      properties: { total: { type: 'number' }, done: { type: 'number' } },
+      required: ['total', 'done'],
+    },
+    bridge_present: { type: 'boolean', description: 'whether the checkpoint-bridge ask_user_via_host tool is available in this session' },
   },
   required: ['change', 'schema_name', 'planning_complete', 'artifacts'],
 }
@@ -107,6 +113,16 @@ const snap = await agent(
 )
 if (!snap) {
   return { change: CHANGE, mode: MODE, error: 'resolve-failed' }
+}
+if (snap.bridge_present === false && MODE === 'one') {
+  log('ERROR: checkpoint-bridge extension is not installed in this session — refusing to author without it (grill rounds would be silently downgraded).')
+  return {
+    change: CHANGE,
+    mode: MODE,
+    schema_name: snap.schema_name,
+    error: 'checkpoint-bridge-not-installed',
+    guidance: 'openspec* authoring workflows need the checkpoint-bridge extension for grill rounds (ask_user_via_host). Install: pi install npm:pi-checkpoint-bridge — or wire extensions/checkpoint-bridge via your Pi profile (e.g. Outfitter). This is not a crash: fix the wiring and re-run.',
+  }
 }
 const readyArtifacts = snap.artifacts.filter(function (a) { return a.status === 'ready' })
 if (MODE === 'scaffold') {

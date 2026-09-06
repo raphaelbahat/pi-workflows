@@ -1,3 +1,4 @@
 {
-  ".": "1.1.3"
+  ".": "1.1.3",
+  "extensions/checkpoint-bridge": "0.1.0"
 }

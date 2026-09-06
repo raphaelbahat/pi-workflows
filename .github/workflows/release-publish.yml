@@ -12,13 +12,39 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
+  # Enables npm OIDC trusted publishing — no NPM_TOKEN secret required.
+  id-token: write
 
 jobs:
-  publish:
+  release:
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
-      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+      # Second release-please pass: the Release PR was auto-merged by
+      # release-please.yml, so this pass creates the tag + GitHub Release.
+      - id: release
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+      # Publish the checkpoint-bridge extension to npm when THIS release
+      # touched it (paths_released gates the publish steps). Pushes made with
+      # GITHUB_TOKEN do not trigger workflows, so publishing happens here via
+      # workflow_run. OIDC trusted publishing: no NPM_TOKEN secret required.
+      - name: Record released paths
+        if: steps.release.outputs.release_created == 'true'
+        run: echo "paths_released=${{ steps.release.outputs.paths_released }}" >> "$GITHUB_ENV"
+
+      - if: contains(fromJSON(env.paths_released || '[]'), 'extensions/checkpoint-bridge')
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - if: contains(fromJSON(env.paths_released || '[]'), 'extensions/checkpoint-bridge')
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - if: contains(fromJSON(env.paths_released || '[]'), 'extensions/checkpoint-bridge')
+        run: npm publish --access public
+        working-directory: extensions/checkpoint-bridge

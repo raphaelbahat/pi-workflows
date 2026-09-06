@@ -1,0 +1,35 @@
+{
+  "name": "pi-checkpoint-bridge",
+  "version": "0.1.0",
+  "description": "Pi extension: lets sub-agent sessions ask the human user questions through the main session's UI — the checkpoint channel for the openspec* workflow family (grill rounds, apply blockers, any user-interaction checkpoint).",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/raphaelbahat/pi-workflows.git",
+    "directory": "extensions/checkpoint-bridge"
+  },
+  "keywords": [
+    "pi",
+    "pi-extension",
+    "subagents",
+    "checkpoint",
+    "human-in-the-loop",
+    "openspec"
+  ],
+  "files": [
+    "index.js",
+    "README.md"
+  ],
+  "dependencies": {
+    "typebox": "^1.3.28"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "pi": {
+    "extensions": [
+      "./index.js"
+    ]
+  }
+}

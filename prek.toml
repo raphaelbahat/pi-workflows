@@ -18,10 +18,11 @@ hooks = [
 ]
 
 # ── Biome lint/format gate (scripts/ only) ─────────────────────────────
-# The four root pi-plugin-*.js workflow scripts have top-level return/await
-# (pi-subagents wrapper shape) and must NEVER be run through Biome. biome.json
-# scopes the project to scripts/** (files.includes) and ignores the root
-# pi-plugin-*.js via overrides; this hook further restricts files to ^scripts/.
+# The pi-plugin-*.js workflow scripts (now under workflows/pi-plugin/) have
+# top-level return/await (pi-subagents wrapper shape) and must NEVER be run
+# through Biome. biome.json scopes the project to scripts/** (files.includes)
+# and ignores the workflow scripts via overrides; this hook further restricts
+# files to ^scripts/.
 [[repos]]
 repo = "local"
 hooks = [
