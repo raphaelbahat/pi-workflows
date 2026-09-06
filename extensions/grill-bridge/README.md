@@ -7,8 +7,11 @@ through the main session's UI — the checkpoint channel from
 ## How it works
 
 pi-subagents spawns sub-agent sessions in the **same process** as the main
-session, and every session activates this extension, so all instances share
-one in-process `pi.events` bus.
+session, and every session activates this extension. The relay runs over a
+**process-global bus** — a `Symbol.for`-keyed `EventEmitter` on `globalThis` —
+because `pi.events` turned out to be session-scoped in practice (a request
+emitted on a sub-agent session's bus never reached the main session's
+listener; live-tested 2026-09-06, see ADR-0001's amendment).
 
 1. On `session_start` each instance tries to claim the host role via a
    `globalThis` symbol. The main session always starts first, so **first claim

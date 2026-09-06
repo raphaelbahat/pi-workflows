@@ -3,8 +3,12 @@
 //
 // Design (docs/adr/ADR-0001-*.md): pi-subagents spawns sub-agent sessions in
 // the SAME process as the main session, and every session activates this
-// extension, so all instances share one in-process pi.events bus. An agent
-// session calls the `ask_user` tool; the request travels over the bus to the
+// extension. The relay runs over a PROCESS-GLOBAL bus (a Symbol.for-keyed
+// EventEmitter on globalThis) — NOT pi.events, which is session-scoped in
+// practice: a request emitted on a sub-agent session's pi.events never
+// reached the main session's listener (live test 2026-09-06), while the
+// globalThis host claim demonstrably crossed sessions. An agent session
+// calls the `ask_user` tool; the request travels over the global bus to the
 // instance that owns the host claim (the main session — it always starts
 // first), which renders the questions as ctx.ui dialogs and emits the answers
 // back. `needs_input`-style structured returns remain the fallback when no

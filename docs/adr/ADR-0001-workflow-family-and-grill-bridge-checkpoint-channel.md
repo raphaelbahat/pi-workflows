@@ -30,3 +30,9 @@ Two structural facts constrain any integration:
 - **`needs_input` digests only** (the superseded plan): correct and simple, but every ambiguity costs a full workflow round-trip, interview load concentrates away from the point of need, and blocked stages resume through journal replays. Retained as the fallback, not the channel.
 - **RPC-subprocess relay between separate pi processes**: rejected for the interactive TUI case — the main session and its sub-agents already share one process and one bus, so subprocess plumbing adds failure modes without adding capability. RPC mode remains the path for future external embeddings.
 - **One mega-workflow / per-recipe wrappers / per-schema forks / a generic artifact-graph walker**: rejected in the campaign's deliberation — they swallow OpenSpec's deliberately unequal checkpoint semantics, hard-code `--yes`, or rot on the first custom schema.
+
+## Amendment (2026-09-06, post-implementation)
+
+Live integration testing corrected one design assumption: `pi.events` is **session-scoped in practice**. A request emitted on a sub-agent session's bus never reached the main session's listener (attempts 1–2: tool timeout with no host reply and no TUI change), while the `globalThis` host claim demonstrably crossed sessions in the same process. The shipped relay therefore uses a **process-global bus** — a `Symbol.for("grill-bridge:bus")` EventEmitter on `globalThis`, the same mechanism as the claim — plus a fire-and-forget `ctx.ui.notify` receipt so request arrival is observable independently of dialog rendering.
+
+Attempt 3 then proved the full channel end-to-end in a real pi 0.85.1 process: sub-agent `ask_user` call → global-bus relay → main-session TUI dialog → human answer → tool result `{"status":"ok","answers":[...]}` in ~17 s. Headless `pi -p` separately confirmed the `no-host` fallback. All other decision content stands unchanged.
