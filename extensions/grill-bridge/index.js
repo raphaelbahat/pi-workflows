@@ -15,18 +15,33 @@
 // step. The only dependency is typebox (from the repo root package.json),
 // used for the tool's parameter schema.
 
+import { EventEmitter } from 'node:events'
 import { Type } from 'typebox'
 
 const NS = 'grill-bridge'
 const REQUEST = `${NS}:request`
 const RESPONSE = `${NS}:response`
-// Cross-instance host claim. Symbol.for keeps it shared across jiti module
-// instances of this file within the one pi process.
+// Cross-instance host claim and relay bus. Symbol.for keeps both shared across
+// jiti module instances of this file within the one pi process.
 const HOST_CLAIM = Symbol.for(`${NS}:host-claim`)
+const BUS_SYMBOL = Symbol.for(`${NS}:bus`)
 
 const DEFAULT_TIMEOUT_MS = 300_000 // overall budget for one ask_user call
 const DIALOG_TIMEOUT_MS = 180_000 // per-question dialog budget
 let requestCounter = 0
+
+// pi.events turned out to be session-scoped in practice: a sub-agent session's
+// emit never reached the main session's listener (live test 2026-09-06). The
+// host claim on globalThis DID cross sessions, so the relay uses the same
+// process-global mechanism.
+function sharedBus() {
+  if (!globalThis[BUS_SYMBOL]) {
+    const emitter = new EventEmitter()
+    emitter.setMaxListeners(64)
+    globalThis[BUS_SYMBOL] = emitter
+  }
+  return globalThis[BUS_SYMBOL]
+}
 
 function sessionRef(ctx) {
   try {
@@ -72,7 +87,7 @@ export default function (pi) {
     listeners: [], // bus listeners owned by this instance, removed on shutdown
   }
 
-  const bus = pi.events
+  const bus = sharedBus()
   const on = (event, handler) => {
     bus.on(event, handler)
     state.listeners.push({ event, handler })
@@ -121,6 +136,11 @@ export default function (pi) {
           bus.emit(RESPONSE, { requestId: request.requestId, status: 'no-host', answers: [] })
           return
         }
+        // Fire-and-forget receipt proof: visible even if the dialog itself
+        // fails to render.
+        try {
+          ctx.ui.notify?.(`grill-bridge: a sub-agent is asking ${request.questions?.length ?? 0} question(s)`, 'info')
+        } catch {}
         const result = await runDialogs(request.questions ?? [], ctx, dialogTimeoutFor(request))
         bus.emit(RESPONSE, { requestId: request.requestId, ...result })
       })
