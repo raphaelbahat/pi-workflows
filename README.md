@@ -14,8 +14,10 @@ land flat by basename at `<project>/.pi/workflows/` — the resolver scans non-r
 | `workflows/pi-plugin/pi-plugin-stack-advisor.js` | 4 persona-lensed advisors + 1 unbiased propose complementary, non-conflicting plugin stacks; synthesizer merges them |
 | `workflows/pi-plugin/pi-plugin-pipeline.js` | Orchestrator: eval → comparison → (optional, `args.stack`) stack recommendations |
 | `workflows/openspec/openspec-validate-change.js` | Read-only validation sweep for one OpenSpec change: 4 parallel reviewer dimensions (completeness/correctness/coherence/unbiased) + strict CLI gate → CRITICAL/WARNING/SUGGESTION scorecard report |
-| `workflows/openspec/openspec-plan-change.js` | Schema-driven authoring for one change: resolve graph via CLI, author the first ready artifact from its template, QA. Modes: `scaffold`\|`one`. Grill via the checkpoint-bridge `ask_user_via_host` tool; `needs_input` fallback. Never applies/archives |
-| `extensions/checkpoint-bridge/` | pi extension (not a workflow): relays sub-agent `ask_user_via_host` calls over a process-global bus to the main session's UI — the ADR-0001 checkpoint channel (pi.events proved session-scoped; see the ADR amendment) |
+| `workflows/openspec/openspec-plan-change.js` | Schema-driven authoring for one change: resolve graph via CLI, author the first ready artifact from its template, QA. Modes: `scaffold`\|`one`\|`apply-ready` (loop to planning-complete, capped by `maxArtifacts`). Grill via the checkpoint-bridge `ask_user_via_host` tool; `needs_input` fallback. Never applies/archives |
+| `workflows/openspec/openspec-apply-change.js` | Per-task implementation pipeline: Load (`instructions apply --json`, fail-fast on blocked) → per task an implementer agent + a SEPARATE checkbox-verifier agent → ONE batched bridge escalation on the first blocker → Report. `worktree`/`testGate` optional, default off. Never archives/updates |
+| `workflows/openspec/openspec-campaign.js` | Campaign orchestrator for N independent changes: serial `openspec new change` scaffolding (global-mutating, never parallelized), one-level `workflow('openspec-plan-change')` fan-out (proposals-only default), per-item outcome tracking, `CAMPAIGN.md` digest. Never applies/archives/updates |
+| `extensions/checkpoint-bridge/` | pi extension (not a workflow): relays sub-agent `ask_user_via_host` calls over a process-global bus to the main session's UI — the ADR-0001 checkpoint channel (pi.events proved session-scoped; see the ADR amendment). Published to npm as `pi-checkpoint-bridge`; **required for all `workflows/openspec/` authoring/apply workflows** |
 
 ## Args contracts
 
@@ -51,11 +53,25 @@ land flat by basename at `<project>/.pi/workflows/` — the resolver scans non-r
 
 ### openspec-plan-change
 - `change` **(required)** — kebab-case change name
-- `mode` — `one` (default: author exactly the first `ready` artifact) or `scaffold` (create + report first instructions, no write); `apply-ready` is refused pending its measured pilot (ADR-0001)
+- `mode` — `one` (default: author exactly the first `ready` artifact), `scaffold` (create + report first instructions, no write), or `apply-ready` (loop resolve→author→QA until every planning artifact is `done`/`skipped`)
+- `maxArtifacts` — apply-ready cap per run (default 12); the return names remaining artifacts so a later run resumes idempotently
 - `create` — set truthy to let the resolve stage run `openspec new change` (host pre-approves by passing it)
 - `intent` — optional host-authored brief for the author agent
 - `repoRoot`, `store` — repo root for the CLI; store id appended as `--store`
 - Requires the checkpoint-bridge extension: if `ask_user_via_host` is absent, the run returns a friendly `checkpoint-bridge-not-installed` error instead of authoring (install: `pi install npm:pi-checkpoint-bridge`)
+
+### openspec-apply-change
+- `change` **(required)** — kebab-case name of a planning-complete change
+- `worktree` — run-level worktree isolation per implementer (default **off**); created worktree paths are returned — the host integrates and removes
+- `testGate` / `testCommand` — gated tests must pass before a task reports implemented (`testCommand` required when `testGate` is true)
+- `repoRoot`, `store` — as above
+- Implementer agents never touch `tasks.md`; a separate checkbox-verifier agent marks checkboxes with `evidence[]`; hard stop + ONE batched bridge escalation on the first blocker; `needs_input` when no host answers
+
+### openspec-campaign
+- `items` — optional array of change names or `{change, intent}` records; omitted → discovery via `openspec list`
+- `planMode` — `one` (default, proposals-only) or `scaffold`; deeper authoring per item is an explicit host re-invocation, never a campaign default
+- `repoRoot`, `store` — as above; `digestFile` — digest name (default `CAMPAIGN.md`, repo root)
+- Serial `openspec new change` (global-mutating, never parallelized); per-item outcomes `ok`/`needs_input`/`failed` with no blanket retries; digest never contains apply/archive/update instructions
 
 ## Invocation
 

@@ -1,0 +1,315 @@
+export const meta = {
+  name: 'openspec-apply-change',
+  description:
+    'Per-task implementation pipeline for ONE planning-complete OpenSpec change: Load (instructions apply --json, fail-fast on blocked) → Implement (implementer agent + separate checkbox-verifier agent per task, CLI order) → Escalate (ONE batched ask_user_via_host on the first blocker) → Report. The implementer never marks its own checkbox; archive/update are permanently main-session-only.',
+  phases: [
+    { title: 'Load', detail: 'instructions apply --json once; fail fast with missingArtifacts when blocked' },
+    { title: 'Implement', detail: 'per task: implementer agent, then checkbox-verifier agent; re-query CLI per dispatch' },
+    { title: 'Escalate', detail: 'one batched checkpoint-bridge ask on the first blocker; resume on ok' },
+    { title: 'Report', detail: 'final progress + worktrees + host-only next steps' },
+  ],
+}
+
+const TOOL = [
+  'TOOL DISCIPLINE: issue at most ONE tool call per message; never batch two or more tool calls in a single turn.',
+  'If a tool call is rejected as malformed, silently re-issue that ONE call cleanly. Never restate or quote tool-call markup as text.',
+  'End by calling StructuredOutput exactly once with the required object — do not answer in prose instead.',
+].join('\n')
+
+const IMPLEMENTER_CONTRACT = [
+  'IMPLEMENTER CONTRACT (verbatim prohibitions — contractual trust model, ADR-0002):',
+  '- You MUST NOT create, edit, or delete tasks.md. Marking checkboxes is forbidden for you.',
+  '- You MUST NOT run `openspec archive`, `openspec update`, or ANY openspec verb that writes state.',
+  '- You implement ONLY the task assigned to you; do not start neighboring tasks.',
+  '- If a test gate is active for this run, the gated tests MUST pass before you report implemented.',
+].join('\n')
+
+const VERIFIER_CONTRACT = [
+  'VERIFIER CONTRACT (verbatim prohibitions — contractual trust model, ADR-0002):',
+  '- You are the ONLY agent allowed to edit tasks.md, and only to mark THIS task checkbox from `[ ]` to `[x]`.',
+  '- You MUST NOT implement or fix code — verification only.',
+  '- You verify by reading the implemented files/diff yourself, NEVER by trusting the implementer report.',
+  '- Every claim in evidence[] must cite a file:line, command output, or test result.',
+].join('\n')
+
+const APPLY_SNAP_SCHEMA = {
+  type: 'object',
+  properties: {
+    state: { type: 'string', enum: ['blocked', 'ready', 'all_done'] },
+    change_dir: { type: 'string' },
+    progress: {
+      type: 'object',
+      properties: { total: { type: 'number' }, complete: { type: 'number' }, remaining: { type: 'number' } },
+      required: ['total', 'complete', 'remaining'],
+    },
+    tasks: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          description: { type: 'string' },
+          done: { type: 'boolean' },
+        },
+        required: ['id', 'description', 'done'],
+      },
+    },
+    missing_artifacts: { type: 'array', items: { type: 'string' } },
+    instruction_excerpt: { type: 'string' },
+  },
+  required: ['state', 'progress', 'tasks'],
+}
+
+const TASK_RESULT_SCHEMA = {
+  type: 'object',
+  properties: {
+    task_id: { type: 'string' },
+    status: { type: 'string', enum: ['implemented', 'paused', 'failed'] },
+    summary: { type: 'string' },
+    files_touched: { type: 'array', items: { type: 'string' } },
+    worktree_path: { type: 'string' },
+    test_outcome: { type: 'string' },
+    question_for_host: { type: 'string' },
+  },
+  required: ['task_id', 'status', 'summary'],
+}
+
+const VERIFY_RESULT_SCHEMA = {
+  type: 'object',
+  properties: {
+    task_id: { type: 'string' },
+    verified: { type: 'boolean' },
+    evidence: { type: 'array', items: { type: 'string' } },
+    marked: { type: 'boolean' },
+    blocker_reason: { type: 'string' },
+  },
+  required: ['task_id', 'verified', 'evidence', 'marked'],
+}
+
+const ESCALATION_SCHEMA = {
+  type: 'object',
+  properties: {
+    status: { type: 'string', enum: ['ok', 'timeout-or-cancelled', 'timeout', 'cancelled', 'no-host', 'error'] },
+    answers: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { question: { type: 'string' }, answer: { type: 'string' } },
+        required: ['question', 'answer'],
+      },
+    },
+  },
+  required: ['status'],
+}
+
+// Defensive args parse: the args transport may deliver a JSON-encoded string.
+const A = (typeof args === 'string') ? JSON.parse(args) : (args || {})
+const CHANGE = A.change
+const ROOT = A.repoRoot ? 'cd ' + A.repoRoot + ' && ' : ''
+const STORE = A.store ? ' --store ' + A.store : ''
+const WORKTREE = A.worktree === true
+const TESTGATE = A.testGate === true
+const TESTCOMMAND = A.testCommand || null
+if (!CHANGE) {
+  throw new Error('args.change is required — the kebab-case name of a planning-complete OpenSpec change')
+}
+if (TESTGATE && !TESTCOMMAND) {
+  throw new Error('args.testCommand is required when args.testGate is true — explicit-only for determinism (design Open Question, v1)')
+}
+log('apply-change: ' + CHANGE + ' | worktree: ' + WORKTREE + ' | testGate: ' + TESTGATE)
+
+const worktrees = [] // every created worktree path is reported; the host integrates or removes
+
+function blockerQuestions(task, impl, verif) {
+  const q = []
+  q.push('Task ' + task.id + ' is blocked (' + (verif ? 'verification failed: ' + (verif.blocker_reason || 'unverified') : impl ? impl.status + ': ' + impl.summary : 'agent returned null') + '). How should the pipeline proceed? Options: fix guidance, skip this task (host marks it), or abort the run.')
+  if (impl && impl.question_for_host) q.push(impl.question_for_host)
+  return q
+}
+
+// One batched escalation per stop (ADR-0002 D7): a dedicated agent makes the
+// single ask_user_via_host call and returns the bridge JSON.
+async function escalate(task, impl, verif) {
+  const questions = blockerQuestions(task, impl, verif)
+  const esc = await agent(
+    [TOOL,
+     'You are the escalation channel for a blocked OpenSpec apply pipeline (change "' + CHANGE + '").',
+     'Call the ask_user_via_host tool EXACTLY ONCE with ALL of these questions batched:',
+     JSON.stringify(questions.map(function (q) { return { question: q } })),
+     'Then return the bridge JSON as {status, answers}. Do NOT retry on non-ok statuses; do NOT guess answers.',
+    ].join('\n'),
+    { label: 'escalate:' + task.id, phase: 'Escalate', agentType: 'general-purpose', effort: 'low', schema: ESCALATION_SCHEMA },
+  )
+  return esc || { status: 'error' }
+}
+
+// --- Phase: Load ------------------------------------------------------------
+phase('Load')
+const snap = await agent(
+  [TOOL,
+   'Load the apply state for change "' + CHANGE + '" WITHOUT modifying anything.',
+   'Run: ' + ROOT + 'openspec instructions apply --change "' + CHANGE + '" --json' + STORE,
+   'Return the snapshot: state, change_dir, progress, tasks[] (id, description, done), missing_artifacts,',
+   'and a 10-line excerpt of the instruction string. Do NOT implement anything.',
+  ].join('\n'),
+  { label: 'load:' + CHANGE, phase: 'Load', agentType: 'general-purpose', effort: 'minimal', schema: APPLY_SNAP_SCHEMA },
+)
+if (!snap) {
+  return { change: CHANGE, error: 'load-failed', note: 'load agent returned null — check the change name and repo root' }
+}
+if (snap.state === 'blocked') {
+  return {
+    change: CHANGE,
+    error: 'blocked',
+    missing_artifacts: snap.missing_artifacts || [],
+    next: 'host-complete-planning',
+    note: 'Planning is incomplete — finish planning (openspec-plan-change) before applying.',
+  }
+}
+log('Loaded: ' + snap.progress.total + ' tasks, ' + snap.progress.complete + ' complete, state ' + snap.state)
+
+// --- Phase: Implement -------------------------------------------------------
+phase('Implement')
+let guard = 0
+const MAX_ITERATIONS = (snap.progress.total || 0) + 4 // every task + re-queries; hard runaway backstop
+while (guard++ < MAX_ITERATIONS) {
+  // Re-query per dispatch: the CLI checkbox progress is authoritative (D4).
+  const s = guard === 1 ? snap : await agent(
+    [TOOL, 'Re-run: ' + ROOT + 'openspec instructions apply --change "' + CHANGE + '" --json' + STORE + ' — return the snapshot only (state, progress, tasks[]). Do NOT implement anything.'].join('\n'),
+    { label: 'status:' + CHANGE + ':' + guard, phase: 'Implement', agentType: 'general-purpose', effort: 'minimal', schema: APPLY_SNAP_SCHEMA },
+  )
+  if (!s) {
+    return { change: CHANGE, error: 'status-failed', progress: snap.progress, note: 'status agent returned null — re-run resumes idempotently (checkboxes are the state)' }
+  }
+  if (s.state === 'blocked') {
+    return { change: CHANGE, error: 'blocked', missing_artifacts: s.missing_artifacts || [], progress: s.progress, next: 'host-complete-planning' }
+  }
+  const task = (s.tasks || []).find(function (t) { return !t.done })
+  if (!task) break // every task complete and verified — Report
+  log('Task ' + task.id + ': dispatching implementer')
+
+  // Implementer (effort high). Distinct from the verifier by design (ADR-0002).
+  const impl = await agent(
+    [TOOL, IMPLEMENTER_CONTRACT, '',
+     'Assigned task: ' + task.id + ' — ' + task.description,
+     'Change: "' + CHANGE + '" (change dir: ' + (s.change_dir || 'openspec/changes/' + CHANGE + ')') + ').',
+     WORKTREE
+       ? 'ISOLATION: create a task-scoped git worktree (e.g. git worktree add ../' + CHANGE + '-' + task.id.replace(/[^a-z0-9]+/gi, '-') + '), do ALL work inside it, NEVER merge into the main tree, and report the worktree path in worktree_path. The host integrates and removes it.'
+       : 'ISOLATION: none requested for this run — edit the repository working tree directly.',
+     TESTGATE
+       ? 'TEST GATE: run `' + TESTCOMMAND + '`. A failing outcome means you report status "paused" with test_outcome describing the failure — a non-passing gate can never be reported as implemented.'
+       : 'TEST GATE: not enabled for this run.',
+     '',
+     'Execute the task, then return {task_id, status, summary, files_touched[], worktree_path?, test_outcome?, question_for_host?}.',
+     'status "implemented" requires the task work actually done' + (TESTGATE ? ' and the gated tests passing' : '') + '.',
+    ].join('\n'),
+    { label: 'implement:' + task.id, phase: 'Implement', agentType: 'general-purpose', effort: 'high', schema: TASK_RESULT_SCHEMA },
+  )
+  if (!impl || impl.status !== 'implemented') {
+    // Blocker: stop dispatch immediately, ONE batched escalation (D7).
+    phase('Escalate')
+    const esc = await escalate(task, impl, null)
+    if (esc.status === 'ok') {
+      // Resume the SAME task with the host's decisions applied.
+      log('Host answered — resuming task ' + task.id + ' with decisions applied')
+      const retry = await agent(
+        [TOOL, IMPLEMENTER_CONTRACT, '',
+         'Assigned task: ' + task.id + ' — ' + task.description,
+         'The host resolved your blocker. Apply these decisions:',
+         JSON.stringify(esc.answers || []),
+         '',
+         WORKTREE ? 'ISOLATION: continue in the worktree you created (report worktree_path).' : 'ISOLATION: none requested for this run.',
+         TESTGATE ? 'TEST GATE: `' + TESTCOMMAND + '` must pass before reporting implemented.' : 'TEST GATE: not enabled.',
+         '',
+         'Return {task_id, status, summary, files_touched[], worktree_path?, test_outcome?}.',
+        ].join('\n'),
+        { label: 'implement:' + task.id + ':resumed', phase: 'Implement', agentType: 'general-purpose', effort: 'high', schema: TASK_RESULT_SCHEMA },
+      )
+      if (!retry || retry.status !== 'implemented') {
+        return {
+          change: CHANGE, error: 'blocker-unresolved', blocked_task: task.id,
+          needs_input: { task: task.id, escalation: esc, note: 'The task blocked again after the host answered. No checkbox was marked.' },
+          progress: s.progress, next: 'host-decide-then-resume',
+        }
+      }
+      impl = retry
+      phase('Implement')
+    } else {
+      return {
+        change: CHANGE, error: 'escalation-failed', blocked_task: task.id,
+        needs_input: { task: task.id, escalation: esc, note: 'No checkbox was marked for the blocked task; the host decides, then re-invokes (checkboxes are the state, so nothing is lost).' },
+        progress: s.progress, next: 'host-decide-then-resume',
+      }
+    }
+  }
+  if (impl.worktree_path) worktrees.push(impl.worktree_path)
+
+  // Checkbox verifier — a DISTINCT agent; the only one allowed to edit tasks.md.
+  const verif = await agent(
+    [TOOL, VERIFIER_CONTRACT, '',
+     'Verify task ' + task.id + ' — ' + task.description,
+     'The implementer reported: ' + JSON.stringify({ summary: impl.summary, files_touched: impl.files_touched, test_outcome: impl.test_outcome }),
+     TESTGATE ? 'The gated tests (`' + TESTCOMMAND + '`) MUST be passing for verification to succeed — confirm from the reported outcome and, where feasible, by reading the affected files.' : '',
+     '',
+     'Steps: read the implemented files yourself (never trust the report alone); check the work matches the task description;',
+     'if verified, edit tasks.md (change dir: ' + (s.change_dir || 'openspec/changes/' + CHANGE + ')') + ' marking THIS task checkbox from `[ ]` to `[x]` — no other edit;',
+     'return {task_id, verified, evidence[], marked}. evidence[] entries cite file:line, command output, or test results.',
+     'If verification fails, set verified=false, marked=false, and blocker_reason — do NOT mark the checkbox.',
+    ].join('\n'),
+    { label: 'verify:' + task.id, phase: 'Implement', agentType: 'general-purpose', effort: 'medium', schema: VERIFY_RESULT_SCHEMA },
+  )
+  if (!verif || verif.verified !== true || verif.marked !== true) {
+    phase('Escalate')
+    const esc = await escalate(task, impl, verif || null)
+    if (esc.status === 'ok') {
+      // Host decided: the host's answer may be "it is actually done" (host marks
+      // the checkbox itself) or new guidance. Resume verification once.
+      const reverif = await agent(
+        [TOOL, VERIFIER_CONTRACT, '',
+         'Re-verify task ' + task.id + ' — ' + task.description,
+         'The host resolved the verification blocker. Apply these decisions:',
+         JSON.stringify(esc.answers || []),
+         '',
+         'If the decisions confirm the work is done and you can now verify it: mark the checkbox per your contract.',
+         'Return {task_id, verified, evidence[], marked}.',
+        ].join('\n'),
+        { label: 'verify:' + task.id + ':resumed', phase: 'Implement', agentType: 'general-purpose', effort: 'medium', schema: VERIFY_RESULT_SCHEMA },
+      )
+      if (!reverif || reverif.verified !== true || reverif.marked !== true) {
+        return {
+          change: CHANGE, error: 'verification-unresolved', blocked_task: task.id,
+          needs_input: { task: task.id, escalation: esc, note: 'Verification still fails after the host answered. No checkbox was marked.' },
+          progress: s.progress, next: 'host-decide-then-resume',
+        }
+      }
+      log('Task ' + task.id + ' verified after host decision')
+      phase('Implement')
+    } else {
+      return {
+        change: CHANGE, error: 'escalation-failed', blocked_task: task.id,
+        needs_input: { task: task.id, escalation: esc, note: 'No checkbox was marked for the blocked task; the host decides, then re-invokes.' },
+        progress: s.progress, next: 'host-decide-then-resume',
+      }
+    }
+  } else {
+    log('Task ' + task.id + ' verified + marked (' + (s.progress.complete + 1) + '/' + s.progress.total + ')')
+  }
+}
+
+// --- Phase: Report ----------------------------------------------------------
+phase('Report')
+const final = await agent(
+  [TOOL, 'Final apply state: ' + ROOT + 'openspec instructions apply --change "' + CHANGE + '" --json' + STORE + ' — return the snapshot only. Do NOT implement anything.'].join('\n'),
+  { label: 'final:' + CHANGE, phase: 'Report', agentType: 'general-purpose', effort: 'minimal', schema: APPLY_SNAP_SCHEMA },
+)
+return {
+  change: CHANGE,
+  state: final ? final.state : 'unknown',
+  tasks_done: final ? final.progress.complete : snap.progress.complete,
+  tasks_total: final ? final.progress.total : snap.progress.total,
+  worktrees,
+  needs_input: null,
+  blocked_task: null,
+  next: 'host-review-then-archive-in-main-session',
+  note: 'All tasks implemented and verified. openspec archive (with its inline delta-spec sync) and openspec update remain main-session-only — the host runs them after review.',
+}

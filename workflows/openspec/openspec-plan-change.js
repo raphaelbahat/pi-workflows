@@ -1,7 +1,7 @@
 export const meta = {
   name: 'openspec-plan-change',
   description:
-    'Schema-driven OpenSpec authoring for ONE change: resolve the artifact graph via the CLI, author the next ready artifact from its template/instruction, QA it, and report. Modes: scaffold (create + first instructions, no write) | one (default; author exactly one artifact). Ambiguities go through the checkpoint-bridge ask_user_via_host tool; without the bridge the workflow returns structured needs_input instead of guessing. Never applies, never archives.',
+    'Schema-driven OpenSpec authoring for ONE change: resolve the artifact graph via the CLI, author the next ready artifact from its template/instruction, QA it, and report. Modes: scaffold (create + first instructions, no write) | one (default; author exactly one artifact) | apply-ready (loop resolve→author→QA until every planning artifact is done/skipped, capped by maxArtifacts). Ambiguities go through the checkpoint-bridge ask_user_via_host tool; without the bridge the workflow returns structured needs_input instead of guessing. Never applies, never archives.',
   phases: [
     { title: 'Resolve', detail: 'optional new change + status --json graph snapshot' },
     { title: 'Author', detail: 'write the first ready artifact from its template; grill via ask_user_via_host if armed' },
@@ -88,9 +88,9 @@ const STORE = A.store ? ' --store ' + A.store : ''
 if (!CHANGE) {
   throw new Error('args.change is required — the kebab-case change name')
 }
-if (MODE !== 'one' && MODE !== 'scaffold') {
+if (MODE !== 'one' && MODE !== 'scaffold' && MODE !== 'apply-ready') {
   throw new Error(
-    "args.mode must be 'one' or 'scaffold' — 'apply-ready' authoring is gated behind a measured pilot (ADR-0001); ask the host session to run it manually for now",
+    "args.mode must be 'one', 'scaffold' or 'apply-ready' — other values are not defined",
   )
 }
 log('plan-change: ' + CHANGE + ' | mode: ' + MODE)
@@ -114,7 +114,7 @@ const snap = await agent(
 if (!snap) {
   return { change: CHANGE, mode: MODE, error: 'resolve-failed' }
 }
-if (snap.bridge_present === false && MODE === 'one') {
+if (snap.bridge_present === false && MODE !== 'scaffold') {
   log('ERROR: checkpoint-bridge extension is not installed in this session — refusing to author without it (grill rounds would be silently downgraded).')
   return {
     change: CHANGE,
@@ -146,6 +146,105 @@ if (!readyArtifacts.length) {
     written: [],
     next: snap.planning_complete ? 'host-validate-then-authorize-apply' : 'host-resolve-blocked-graph',
     note: 'No artifact is ready — either planning is complete or the graph is blocked on missing dependencies.',
+  }
+}
+
+// --- Phase: Apply-ready loop (mode: apply-ready) ----------------------------
+// D1–D3: reuse the per-artifact agent trio; the CLI status graph is the only
+// state — re-snapshot after every author+QA; only done/skipped settle an
+// artifact; maxArtifacts counts artifacts authored in THIS run; a later run
+// resumes idempotently because settled artifacts are never re-authored.
+if (MODE === 'apply-ready') {
+  const cap = Math.max(1, Number(A.maxArtifacts) || 12)
+  const written = []
+  const skipped = []
+  let authored = 0
+  let iteration = 0
+  while (authored < cap) {
+    iteration++
+    const s = iteration === 1 ? snap : await agent(
+      [TOOL, 'Re-run: ' + ROOT + 'openspec status --change "' + CHANGE + '" --json' + STORE + ' and return the graph snapshot only. Do NOT write any file.'].join('\n'),
+      { label: 'status:' + CHANGE + ':' + iteration, phase: 'Resolve', agentType: 'general-purpose', effort: 'minimal', schema: GRAPH_SCHEMA },
+    )
+    if (!s) return { change: CHANGE, mode: MODE, error: 'status-failed', authored, note: 'status agent returned null — re-run resumes idempotently' }
+    const ready = s.artifacts.filter(function (a) { return a.status === 'ready' })
+    if (!ready.length) break // loop terminates: everything is done/skipped or blocked
+    for (const art of ready) {
+      if (authored >= cap) break
+      const res = await agent(
+        [TOOL, CONTRACT, GRILL, '',
+         'Assign artifact: ' + art.id + ' (change "' + CHANGE + '").',
+         'Intent from the host (may be empty — rely on existing artifacts and the user): ' + (A.intent || '(none provided)'),
+         '',
+         'Steps:',
+         '1. If status is already done/skipped, return action accordingly (idempotent — write nothing).',
+         '2. Run: ' + ROOT + 'openspec instructions ' + art.id + ' --change "' + CHANGE + '" --json' + STORE,
+         '3. Read each dependency artifact it lists from disk (once each).',
+         '4. If the instruction says skipped/warning — return action "skipped" (write nothing).',
+         '5. If scope is ambiguous — follow the CHECKPOINT RULE above.',
+         '6. Otherwise write the artifact at resolvedOutputPath, filling EVERY section the template defines, with',
+         '   dependency-derived content (cite which files informed decisions in one line each). RFC-2119 requirements',
+         '   use SHALL/MUST; scenario blocks use four-hash #### headings.',
+         '7. Return {id, action:"wrote", path, assumption?} — assumption = any judgment call you made, one line.',
+        ].join('\n'),
+        { label: 'author:' + art.id + ':' + iteration, phase: 'Author', agentType: 'general-purpose', effort: 'high', schema: WRITE_SCHEMA },
+      )
+      if (!res) {
+        // Null is a blocker, never success — stop and surface remaining work.
+        return {
+          change: CHANGE, mode: MODE, error: 'author-failed', artifact: art.id, authored,
+          remaining: s.artifacts.filter(function (a) { return a.status !== 'done' && a.status !== 'skipped' }).map(function (a) { return a.id }),
+          note: 'author agent returned null — treated as a blocker (never success); re-run resumes idempotently',
+        }
+      }
+      if (res.action === 'needs_input') {
+        return {
+          change: CHANGE, mode: MODE,
+          needs_input: { artifact: art.id, question: res.question || 'host decision required' },
+          authored, written, skipped,
+          remaining: s.artifacts.filter(function (a) { return a.status !== 'done' && a.status !== 'skipped' }).map(function (a) { return a.id }),
+          next: 'host-decide-then-resume',
+          note: 'Paused on material ambiguity — no file was written from a guessed answer. The host decides, then re-invokes; settled artifacts are not re-authored.',
+        }
+      }
+      if (res.action === 'skipped') {
+        skipped.push({ id: art.id, path: null })
+        log('Skipped per CLI: ' + art.id + ' (no file written)')
+        continue
+      }
+      written.push({ id: art.id, path: res.path, assumption: res.assumption || null })
+      authored++
+      const qa = await agent(
+        [TOOL,
+         'QA pass for artifact ' + art.id + ' at ' + (res.path || 'its resolvedOutputPath') + ' (change "' + CHANGE + '").',
+         'READ the file, then check and FIX IN PLACE only mechanical defects:',
+         '- every template section present and non-empty;',
+         '- no leaked CLI payloads: "context": or "rules": JSON fragments or <placeholders> left verbatim;',
+         '- dependency artifacts actually cited where decisions reference them;',
+         '- RFC-2119 keyword presence in requirement lines; four-hash #### scenario headings.',
+         'Then run: ' + ROOT + 'openspec validate "' + CHANGE + '" --type change --strict' + STORE,
+         '  (a partial plan may legitimately fail because LATER artifacts are missing — report that as ok=true with a note',
+         '   in fixes, e.g. "strict-fail expected mid-planning: <first error line>", unless the failure names THIS artifact).',
+         'If the failure names THIS artifact, fix the wording in this file only and re-run the validate once.',
+         'Return {id, ok, fixes[]} — fixes = one line per correction made (empty if none).',
+        ].join('\n'),
+        { label: 'qa:' + art.id + ':' + iteration, phase: 'QA', agentType: 'general-purpose', effort: 'medium', schema: QA_SCHEMA },
+      )
+      log('Authored+QA: ' + art.id + ' (' + authored + '/' + cap + ')' + (qa && qa.ok === false ? ' — qa flagged fixes' : ''))
+    }
+  }
+  const final = await agent(
+    [TOOL, 'Final status: ' + ROOT + 'openspec status --change "' + CHANGE + '" --json' + STORE + ' — return the graph snapshot only. Do NOT write any file.'].join('\n'),
+    { label: 'final-status:' + CHANGE, phase: 'Resolve', agentType: 'general-purpose', effort: 'minimal', schema: GRAPH_SCHEMA },
+  )
+  const remaining = final
+    ? final.artifacts.filter(function (a) { return a.status !== 'done' && a.status !== 'skipped' }).map(function (a) { return a.id })
+    : []
+  return {
+    change: CHANGE, mode: MODE, schema_name: (final && final.schema_name) || snap.schema_name,
+    authored, written, skipped, needs_input: null,
+    remaining, planning_complete: final ? final.planning_complete === true : false,
+    next: final && final.planning_complete ? 'host-authorize-apply' : 'host-resume-apply-ready',
   }
 }
 const target = readyArtifacts[0]
