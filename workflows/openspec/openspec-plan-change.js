@@ -229,6 +229,13 @@ if (MODE === 'apply-ready') {
       }
       written.push({ id: art.id, path: res.path, assumption: res.assumption || null })
       authored++
+      // QA is deliberately UNSCHEMAD and gate-based: a live pilot (2026-09-06)
+      // showed a schema'd QA child looping forever — it called StructuredOutput
+      // 104 times, every call succeeded ("Recorded."), and the child still never
+      // terminated (engine-side anomaly, possibly a race). A child with no
+      // StructuredOutput obligation ends naturally after its final message, and
+      // the gate makes a failing strict validation fail the agent: a non-null
+      // qa return therefore MEANS the strict validation passed.
       const qa = await agent(
         [TOOL,
          'QA pass for artifact ' + art.id + ' at ' + (res.path || 'its resolvedOutputPath') + ' (change "' + CHANGE + '").',
@@ -237,15 +244,16 @@ if (MODE === 'apply-ready') {
          '- no leaked CLI payloads: "context": or "rules": JSON fragments or <placeholders> left verbatim;',
          '- dependency artifacts actually cited where decisions reference them;',
          '- RFC-2119 keyword presence in requirement lines; four-hash #### scenario headings.',
-         'Then run: ' + ROOT + 'openspec validate "' + CHANGE + '" --type change --strict' + STORE,
-         '  (a partial plan may legitimately fail because LATER artifacts are missing — report that as ok=true with a note',
-         '   in fixes, e.g. "strict-fail expected mid-planning: <first error line>", unless the failure names THIS artifact).',
-         'If the failure names THIS artifact, fix the wording in this file only and re-run the validate once.',
-         'Return {id, ok, fixes[]} — fixes = one line per correction made (empty if none).',
+         'After any fixes, run: ' + ROOT + 'openspec validate "' + CHANGE + '" --type change --strict' + STORE,
+         '  (a partial plan may legitimately fail because LATER artifacts are missing — if so, say so in your final text,',
+         '   unless the failure names THIS artifact, in which case fix the wording in this file only and re-run once).',
+         'Finish with a short text verdict (no tool calls after it): whether the artifact is defect-free and what the',
+         'strict validation said.',
         ].join('\n'),
-        { label: 'qa:' + art.id + ':' + iteration, phase: 'QA', agentType: 'general-purpose', effort: 'medium', schema: QA_SCHEMA },
+        { label: 'qa:' + art.id + ':' + iteration, phase: 'QA', agentType: 'general-purpose', effort: 'medium',
+          gate: ROOT + 'openspec validate "' + CHANGE + '" --type change --strict' + STORE },
       )
-      log('Authored+QA: ' + art.id + ' (' + authored + '/' + cap + ')' + (qa && qa.ok === false ? ' — qa flagged fixes' : ''))
+      log('Authored+QA: ' + art.id + ' (' + authored + '/' + cap + ')' + (qa ? '' : ' — QA/strict-gate FAILED (non-blocking here; the final status + host review catch it)'))
     }
   }
   const final = await agent(
@@ -304,7 +312,9 @@ if (written.action !== 'wrote') {
 }
 log('Wrote: ' + (written.path || target.id))
 
-// --- Phase: QA --------------------------------------------------------------
+// QA is unschemad + gate-based (see the apply-ready branch for why — a schema'd
+// QA child looped forever on successful StructuredOutput calls). A non-null qa
+// therefore MEANS the strict validation passed; qa text is the child's verdict.
 const qa = await agent(
   [
     TOOL,
@@ -314,13 +324,14 @@ const qa = await agent(
     '- no leaked CLI payloads: "context": or "rules": JSON fragments or <placeholders> left verbatim;',
     '- dependency artifacts actually cited where decisions reference them;',
     '- RFC-2119 keyword presence in requirement lines; four-hash #### scenario headings.',
-    'Then run: ' + ROOT + 'openspec validate "' + CHANGE + '" --type change --strict' + STORE,
-    '  (a partial plan may legitimately fail because LATER artifacts are missing — report that as ok=true with a note',
-    '   in fixes, e.g. "strict-fail expected mid-planning: <first error line>", unless the failure names THIS artifact).',
-    'If the failure names THIS artifact, fix the wording in this file only and re-run the validate once.',
-    'Return {id, ok, fixes[]} — fixes = one line per correction made (empty if none).',
+    'After any fixes, run: ' + ROOT + 'openspec validate "' + CHANGE + '" --type change --strict' + STORE,
+    '  (a partial plan may legitimately fail because LATER artifacts are missing — if so, say so in your final text,',
+    '   unless the failure names THIS artifact, in which case fix the wording in this file only and re-run once).',
+    'Finish with a short text verdict (no tool calls after it): whether the artifact is defect-free and what the',
+    'strict validation said.',
   ].join('\n'),
-  { label: 'qa:' + target.id, phase: 'QA', agentType: 'general-purpose', effort: 'medium', schema: QA_SCHEMA },
+  { label: 'qa:' + target.id, phase: 'QA', agentType: 'general-purpose', effort: 'medium',
+    gate: ROOT + 'openspec validate "' + CHANGE + '" --type change --strict' + STORE },
 )
 
 return {
@@ -328,8 +339,8 @@ return {
   mode: MODE,
   schema_name: snap.schema_name,
   written: [{ id: target.id, path: written.path, assumption: written.assumption || null }],
-  qa_ok: qa ? qa.ok === true : null,
-  qa_fixes: qa ? qa.fixes : [],
+  qa_ok: qa ? true : null,
+  qa_note: qa ? String(qa).slice(0, 300) : 'QA/strict-gate FAILED — the artifact needs review before continuing',
   needs_input: null,
   remaining_ready: readyArtifacts.length - 1,
   planning_complete: snap.planning_complete,
