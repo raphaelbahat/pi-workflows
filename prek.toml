@@ -14,7 +14,8 @@ minimum_prek_version = "0.4.5"
 [[repos]]
 repo = "local"
 hooks = [
-  { id = "workflow-syntax", name = "workflow script syntax (node --check, pi-subagents wrapper shape)", entry = "node scripts/check-workflow-syntax.mjs", language = "system", files = "\\.js$" },
+  { id = "workflow-syntax", name = "workflow script syntax (node --check, pi-subagents wrapper shape)", entry = "node scripts/check-workflow-syntax.mjs", language = "system", files = "^workflows/.*\\.js$" },
+  { id = "extension-syntax", name = "extension syntax (plain node --check)", entry = "node --check", language = "system", files = "^extensions/.*\\.js$" },
 ]
 
 # ── Biome lint/format gate (scripts/ only) ─────────────────────────────

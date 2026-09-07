@@ -1,0 +1,32 @@
+name: Publish npm
+
+on:
+  release:
+    types: [released]
+  workflow_dispatch: {}
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  # Enables npm OIDC trusted publishing — no NPM_TOKEN secret required.
+  id-token: write
+
+jobs:
+  publish:
+    # Only the checkpoint-bridge extension's releases publish to npm.
+    # (Root releases tag `vX.Y.Z`; the bridge tags `checkpoint-bridge-vX.Y.Z`.)
+    if: startsWith(github.event.release.tag_name || '', 'checkpoint-bridge-v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: npm publish --access public
+        working-directory: extensions/checkpoint-bridge
