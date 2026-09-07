@@ -151,8 +151,9 @@ const snap = await agent(
    'Run: ' + ROOT + 'openspec instructions apply --change "' + CHANGE + '" --json' + STORE,
    'Return the snapshot: state, change_dir, progress, tasks[] (id, description, done), missing_artifacts,',
    'and a 10-line excerpt of the instruction string. Do NOT implement anything.',
+   'STATE MAPPING (verbatim from the payload): "ready" when progress.remaining > 0; "all_done" when no incomplete tasks remain; "blocked" ONLY when the payload itself reports it with non-empty missingArtifacts. Never infer blocked from anything else.',
   ].join('\n'),
-  { label: 'load:' + CHANGE, phase: 'Load', agentType: 'general-purpose', effort: 'minimal', schema: APPLY_SNAP_SCHEMA },
+  { label: 'load:' + CHANGE, phase: 'Load', agentType: 'general-purpose', effort: 'low', schema: APPLY_SNAP_SCHEMA },
 )
 if (!snap) {
   return { change: CHANGE, error: 'load-failed', note: 'load agent returned null — check the change name and repo root' }
@@ -165,7 +166,7 @@ if (!snap) {
 const REPO_ABS = snap.change_dir
   ? snap.change_dir.replace(/\/openspec\/changes\/[^/]+\/?$/, '')
   : (A.repoRoot || null)
-if (snap.state === 'blocked') {
+if (snap.state === 'blocked' && (snap.missing_artifacts || []).length > 0) { // blocked requires missingArtifacts per the documented shape — an agent misread otherwise (pilot 2026-09-07: minimal-effort Load returned blocked while the CLI said ready)
   return {
     change: CHANGE,
     error: 'blocked',
@@ -183,13 +184,13 @@ const MAX_ITERATIONS = (snap.progress.total || 0) + 4 // every task + re-queries
 while (guard++ < MAX_ITERATIONS) {
   // Re-query per dispatch: the CLI checkbox progress is authoritative (D4).
   const s = guard === 1 ? snap : await agent(
-    [TOOL, 'Re-run: ' + ROOT + 'openspec instructions apply --change "' + CHANGE + '" --json' + STORE + ' — return the snapshot only (state, progress, tasks[]). Do NOT implement anything.'].join('\n'),
+    [TOOL, 'Re-run: ' + ROOT + 'openspec instructions apply --change "' + CHANGE + '" --json' + STORE + ' — return the snapshot only (state, progress, tasks[]). Map the payload\'s "state" field VERBATIM ("ready" when progress.remaining > 0; "all_done" when none; "blocked" only if the payload itself says so). Do NOT implement anything.'].join('\n'),
     { label: 'status:' + CHANGE + ':' + guard, phase: 'Implement', agentType: 'general-purpose', effort: 'minimal', schema: APPLY_SNAP_SCHEMA },
   )
   if (!s) {
     return { change: CHANGE, error: 'status-failed', progress: snap.progress, note: 'status agent returned null — re-run resumes idempotently (checkboxes are the state)' }
   }
-  if (s.state === 'blocked') {
+  if (s.state === 'blocked' && (s.missing_artifacts || []).length > 0) { // blocked requires missingArtifacts per the documented shape — an agent misread otherwise
     return { change: CHANGE, error: 'blocked', missing_artifacts: s.missing_artifacts || [], progress: s.progress, next: 'host-complete-planning' }
   }
   const task = (s.tasks || []).find(function (t) { return !t.done })
