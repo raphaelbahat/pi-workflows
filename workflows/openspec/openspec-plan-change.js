@@ -169,14 +169,19 @@ if (MODE === 'apply-ready') {
   const skipped = []
   let authored = 0
   let iteration = 0
-  while (authored < cap) {
+  // Runaway guards (pilot 2026-09-06: 79 agents before kill): an author-returned
+  // 'skipped' NEVER settles in `openspec status` for conditional artifacts — the
+  // loop settles it locally via skipSettled and carries a hard iteration bound.
+  const skipSettled = new Set()
+  const maxIterations = cap * 2 + 4
+  while (authored < cap && iteration < maxIterations) {
     iteration++
     const s = iteration === 1 ? snap : await agent(
       [TOOL, 'Re-run: ' + ROOT + 'openspec status --change "' + CHANGE + '" --json' + STORE + ' and return the graph snapshot only. Do NOT write any file. If the command fails, set schema_name to "CLI-ERROR" and artifacts to [] — never fabricate.'].join('\n'),
       { label: 'status:' + CHANGE + ':' + iteration, phase: 'Resolve', agentType: 'general-purpose', effort: 'minimal', schema: GRAPH_SCHEMA },
     )
     if (!s) return { change: CHANGE, mode: MODE, error: 'status-failed', authored, note: 'status agent returned null — re-run resumes idempotently' }
-    const ready = s.artifacts.filter(function (a) { return a.status === 'ready' })
+    const ready = s.artifacts.filter(function (a) { return a.status === 'ready' && !skipSettled.has(a.id) })
     if (!ready.length) break // loop terminates: everything is done/skipped or blocked
     for (const art of ready) {
       if (authored >= cap) break
@@ -211,14 +216,15 @@ if (MODE === 'apply-ready') {
           change: CHANGE, mode: MODE,
           needs_input: { artifact: art.id, question: res.question || 'host decision required' },
           authored, written, skipped,
-          remaining: s.artifacts.filter(function (a) { return a.status !== 'done' && a.status !== 'skipped' }).map(function (a) { return a.id }),
+          remaining: s.artifacts.filter(function (a) { return a.status !== 'done' && a.status !== 'skipped' && !skipSettled.has(a.id) }).map(function (a) { return a.id }),
           next: 'host-decide-then-resume',
           note: 'Paused on material ambiguity — no file was written from a guessed answer. The host decides, then re-invokes; settled artifacts are not re-authored.',
         }
       }
       if (res.action === 'skipped') {
         skipped.push({ id: art.id, path: null })
-        log('Skipped per CLI: ' + art.id + ' (no file written)')
+        skipSettled.add(art.id) // conditionally-optional artifact: settles locally, status will stay 'ready'
+        log('Skipped by author: ' + art.id + ' (no file written; settled for this run)')
         continue
       }
       written.push({ id: art.id, path: res.path, assumption: res.assumption || null })
@@ -247,7 +253,7 @@ if (MODE === 'apply-ready') {
     { label: 'final-status:' + CHANGE, phase: 'Resolve', agentType: 'general-purpose', effort: 'minimal', schema: GRAPH_SCHEMA },
   )
   const remaining = final
-    ? final.artifacts.filter(function (a) { return a.status !== 'done' && a.status !== 'skipped' }).map(function (a) { return a.id })
+    ? final.artifacts.filter(function (a) { return a.status !== 'done' && a.status !== 'skipped' && !skipSettled.has(a.id) }).map(function (a) { return a.id })
     : []
   return {
     change: CHANGE, mode: MODE, schema_name: (final && final.schema_name) || snap.schema_name,
