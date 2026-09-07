@@ -108,6 +108,12 @@ pi -p --subagents-workflow-file="$HOME/pi-workflows/workflows/pi-plugin/pi-plugi
   Two live defects caught and fixed: a schema'd QA child looping forever on successful StructuredOutput calls
   (QA is now unschemad + gate-based), and task work landing in the wrong repository via relative paths
   (implementer/verifier prompts now pin the absolute repo root from the CLI's change_dir).
+- 2026-09-07: `openspec-campaign` pilot PASSED — the last family member proven: 2 items via args, serial
+  scaffolds, one-level plan fan-out (both proposals `ok`), mutation-rights discipline held across the fan-out
+  (authors refused `.openspec.yaml` and flagged `skip_specs` for the host), `CAMPAIGN.md` digest composed with
+  no apply/archive instructions. 7 agents, ~572k tokens, ~3.8 min. All four family members are now
+  integration-proven; the first production run (`add-cgc-session-lifecycle-gate`, 16 tasks) was launched in
+  `pi-codegraphcontext`.
 - 2026-09-06: openspec family added (ADR-0001): `openspec-validate-change` dry-run on `add-cgc-agent-guide`
   apply-pipelines and a campaign orchestrator stay gated behind measured pilots.
 - 2026-09-02: initial genericization from the 54-plugin context-optimization sweep
