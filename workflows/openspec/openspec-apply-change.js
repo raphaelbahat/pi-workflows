@@ -157,6 +157,14 @@ const snap = await agent(
 if (!snap) {
   return { change: CHANGE, error: 'load-failed', note: 'load agent returned null — check the change name and repo root' }
 }
+// Absolute repo root, derived from the CLI's change_dir (authoritative).
+// Implementer/verifier file operations MUST resolve against this: a workflow
+// child's relative paths resolve against the SESSION cwd, which is frequently a
+// different repository (observed 2026-09-06: PILOT-NOTE.md was written into the
+// wrong repo and the verifier missed it).
+const REPO_ABS = snap.change_dir
+  ? snap.change_dir.replace(/\/openspec\/changes\/[^/]+\/?$/, '')
+  : (A.repoRoot || null)
 if (snap.state === 'blocked') {
   return {
     change: CHANGE,
@@ -192,7 +200,7 @@ while (guard++ < MAX_ITERATIONS) {
   const impl = await agent(
     [TOOL, IMPLEMENTER_CONTRACT, '',
      'Assigned task: ' + task.id + ' — ' + task.description,
-     'Change: "' + CHANGE + '" (change dir: ' + (s.change_dir || 'openspec/changes/' + CHANGE + ')') + ').',
+     'WORKING DIRECTORY: ' + (REPO_ABS || '(unknown — ask the host)') + ' — EVERY file you create or edit MUST use an ABSOLUTE path under that root. Relative paths resolve against a DIFFERENT session cwd and land in the wrong repository (observed failure).',
      WORKTREE
        ? 'ISOLATION: create a task-scoped git worktree (e.g. git worktree add ../' + CHANGE + '-' + task.id.replace(/[^a-z0-9]+/gi, '-') + '), do ALL work inside it, NEVER merge into the main tree, and report the worktree path in worktree_path. The host integrates and removes it.'
        : 'ISOLATION: none requested for this run — edit the repository working tree directly.',
@@ -215,7 +223,7 @@ while (guard++ < MAX_ITERATIONS) {
       const retry = await agent(
         [TOOL, IMPLEMENTER_CONTRACT, '',
          'Assigned task: ' + task.id + ' — ' + task.description,
-         'The host resolved your blocker. Apply these decisions:',
+         'WORKING DIRECTORY: ' + (REPO_ABS || '(unknown)') + ' — absolute paths only, as before.',
          JSON.stringify(esc.answers || []),
          '',
          WORKTREE ? 'ISOLATION: continue in the worktree you created (report worktree_path).' : 'ISOLATION: none requested for this run.',
@@ -250,10 +258,10 @@ while (guard++ < MAX_ITERATIONS) {
      'Verify task ' + task.id + ' — ' + task.description,
      'The implementer reported: ' + JSON.stringify({ summary: impl.summary, files_touched: impl.files_touched, test_outcome: impl.test_outcome }),
      TESTGATE ? 'The gated tests (`' + TESTCOMMAND + '`) MUST be passing for verification to succeed — confirm from the reported outcome and, where feasible, by reading the affected files.' : '',
-     '',
+     'WORKING DIRECTORY: verify files under the repo root ' + (REPO_ABS || '(unknown)') + ' — use ABSOLUTE paths and confirm every files_touched entry EXISTS at its absolute path before verifying.',
      'Steps: read the implemented files yourself (never trust the report alone); check the work matches the task description;',
      'if verified, edit tasks.md (change dir: ' + (s.change_dir || 'openspec/changes/' + CHANGE + ')') + ' marking THIS task checkbox from `[ ]` to `[x]` — no other edit;',
-     'return {task_id, verified, evidence[], marked}. evidence[] entries cite file:line, command output, or test results.',
+     'return {task_id, verified, evidence[], marked}. evidence[] entries cite ABSOLUTE file:line, command output, or test results.',
      'If verification fails, set verified=false, marked=false, and blocker_reason — do NOT mark the checkbox.',
     ].join('\n'),
     { label: 'verify:' + task.id, phase: 'Implement', agentType: 'general-purpose', effort: 'medium', schema: VERIFY_RESULT_SCHEMA },
