@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/raphaelbahat/pi-workflows/compare/v1.2.0...v1.2.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* **ci:** publish npm via release-event + tag gate (paths_released is not JSON for the root package); scope workflow-syntax gate to workflows/, add extension node --check hook ([5ce8727](https://github.com/raphaelbahat/pi-workflows/commit/5ce8727898a3d29b8087418f55ef4418e84f37b4))
+
 ## [1.2.0](https://github.com/raphaelbahat/pi-workflows/compare/v1.1.3...v1.2.0) (2026-09-07)
 
 
