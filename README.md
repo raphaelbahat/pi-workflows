@@ -101,10 +101,14 @@ pi -p --subagents-workflow-file="$HOME/pi-workflows/workflows/pi-plugin/pi-plugi
 
 ## Validation history
 
+- 2026-09-06: step 5 implemented + measured pilots PASSED: `apply-ready` loop on `add-pilot-note` (5 agents,
+  ~246k tokens, ~116 s, planning_complete true — bounded; the first attempt ran away at 79 agents on an
+  author-returned skip that never settles in status, fixed by skipSettled + maxIterations); `openspec-apply-change`
+  on the same change (8 agents, ~406k→~297k tokens, all_done, 2/2 checkboxes marked by the SEPARATE verifier).
+  Two live defects caught and fixed: a schema'd QA child looping forever on successful StructuredOutput calls
+  (QA is now unschemad + gate-based), and task work landing in the wrong repository via relative paths
+  (implementer/verifier prompts now pin the absolute repo root from the CLI's change_dir).
 - 2026-09-06: openspec family added (ADR-0001): `openspec-validate-change` dry-run on `add-cgc-agent-guide`
-  matched the manual baseline — strict gate PASS, 0 CRITICAL false-positives, 60 claims checked, and it caught
-  a real staleness issue (in-force-ADR manifest predating ADR-0008/0009) that write-time validation could not;
-  6 agents, ~527k tokens, ~12 min. `openspec-plan-change` shipped in `one`/`scaffold` modes; `apply-ready`,
   apply-pipelines and a campaign orchestrator stay gated behind measured pilots.
 - 2026-09-02: initial genericization from the 54-plugin context-optimization sweep
   (eval/verify/gate/skip-if-exists/tool-discipline hardened prompts; digest+compose synthesis).

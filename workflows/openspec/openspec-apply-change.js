@@ -208,7 +208,7 @@ while (guard++ < MAX_ITERATIONS) {
        ? 'TEST GATE: run `' + TESTCOMMAND + '`. A failing outcome means you report status "paused" with test_outcome describing the failure — a non-passing gate can never be reported as implemented.'
        : 'TEST GATE: not enabled for this run.',
      '',
-     'Execute the task, then return {task_id, status, summary, files_touched[], worktree_path?, test_outcome?, question_for_host?}.',
+     'Execute the task, then return {task_id, status, summary, files_touched[], worktree_path?, test_outcome?, question_for_host?}. OMIT worktree_path unless ISOLATION was requested for this run; files_touched entries MUST be absolute paths.',
      'status "implemented" requires the task work actually done' + (TESTGATE ? ' and the gated tests passing' : '') + '.',
     ].join('\n'),
     { label: 'implement:' + task.id, phase: 'Implement', agentType: 'general-purpose', effort: 'high', schema: TASK_RESULT_SCHEMA },
@@ -250,7 +250,7 @@ while (guard++ < MAX_ITERATIONS) {
       }
     }
   }
-  if (impl.worktree_path) worktrees.push(impl.worktree_path)
+  if (WORKTREE && impl.worktree_path) worktrees.push(impl.worktree_path) // collect only when isolation was requested
 
   // Checkbox verifier — a DISTINCT agent; the only one allowed to edit tasks.md.
   const verif = await agent(
