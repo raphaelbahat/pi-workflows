@@ -116,6 +116,7 @@ const snap = await agent(
     'Then run: ' + ROOT + 'openspec status --change "' + CHANGE + '" --json' + STORE,
     'Return the graph snapshot: change, schema_name, change_root, planning_complete, apply_requires, and the artifacts array',
     '(id, status, requires, outputPath for every artifact, in the CLI\'s dependency order). Do NOT write any file.',
+    'If the openspec command fails or returns a null-shape: set schema_name to "CLI-ERROR", artifacts to [], planning_complete to false — NEVER fabricate an empty healthy graph.',
   ].join('\n'),
   { label: 'resolve:' + CHANGE, phase: 'Resolve', agentType: 'general-purpose', effort: 'minimal', schema: GRAPH_SCHEMA },
 )
@@ -171,7 +172,7 @@ if (MODE === 'apply-ready') {
   while (authored < cap) {
     iteration++
     const s = iteration === 1 ? snap : await agent(
-      [TOOL, 'Re-run: ' + ROOT + 'openspec status --change "' + CHANGE + '" --json' + STORE + ' and return the graph snapshot only. Do NOT write any file.'].join('\n'),
+      [TOOL, 'Re-run: ' + ROOT + 'openspec status --change "' + CHANGE + '" --json' + STORE + ' and return the graph snapshot only. Do NOT write any file. If the command fails, set schema_name to "CLI-ERROR" and artifacts to [] — never fabricate.'].join('\n'),
       { label: 'status:' + CHANGE + ':' + iteration, phase: 'Resolve', agentType: 'general-purpose', effort: 'minimal', schema: GRAPH_SCHEMA },
     )
     if (!s) return { change: CHANGE, mode: MODE, error: 'status-failed', authored, note: 'status agent returned null — re-run resumes idempotently' }
@@ -242,7 +243,7 @@ if (MODE === 'apply-ready') {
     }
   }
   const final = await agent(
-    [TOOL, 'Final status: ' + ROOT + 'openspec status --change "' + CHANGE + '" --json' + STORE + ' — return the graph snapshot only. Do NOT write any file.'].join('\n'),
+    [TOOL, 'Final status: ' + ROOT + 'openspec status --change "' + CHANGE + '" --json' + STORE + ' — return the graph snapshot only. Do NOT write any file. If the command fails, set schema_name to "CLI-ERROR" and artifacts to [] — never fabricate.'].join('\n'),
     { label: 'final-status:' + CHANGE, phase: 'Resolve', agentType: 'general-purpose', effort: 'minimal', schema: GRAPH_SCHEMA },
   )
   const remaining = final
