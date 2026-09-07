@@ -26,6 +26,14 @@ const CONTRACT = [
   'Never run: openspec archive, openspec update, or any command that moves or syncs state.',
 ].join('\n')
 
+const GRILL = [
+  'CHECKPOINT RULE (human authority): if material scope is genuinely unknown — an ambiguity whose answer would change',
+  'what you write — call the ask_user_via_host tool ONCE with ALL your questions batched (it relays to the human via the',
+  'checkpoint-bridge). If ask_user_via_host returns status "ok", use the answers. For ANY other status (no-host, timeout,',
+  'timeout-or-cancelled, cancelled, error) DO NOT guess and DO NOT retry: return action "needs_input" with the',
+  'question field stating exactly what the host session must decide.',
+].join('\n')
+
 const GRAPH_SCHEMA = {
   type: 'object',
   properties: {
@@ -251,13 +259,6 @@ const target = readyArtifacts[0]
 log('Authoring artifact: ' + target.id + ' (of ' + readyArtifacts.length + ' ready)')
 
 // --- Phase: Author ----------------------------------------------------------
-const GRILL = [
-  'CHECKPOINT RULE (human authority): if material scope is genuinely unknown — an ambiguity whose answer would change',
-  'what you write — call the ask_user_via_host tool ONCE with ALL your questions batched (it relays to the human via the',
-  'checkpoint-bridge). If ask_user_via_host returns status "ok", use the answers. For ANY other status (no-host, timeout,',
-  'timeout-or-cancelled, cancelled, error) DO NOT guess and DO NOT retry: return action "needs_input" with the',
-  'question field stating exactly what the host session must decide.',
-].join('\n')
 
 const written = await agent(
   [
