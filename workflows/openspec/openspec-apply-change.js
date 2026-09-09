@@ -70,6 +70,7 @@ const TASK_RESULT_SCHEMA = {
     worktree_path: { type: 'string' },
     test_outcome: { type: 'string' },
     question_for_host: { type: 'string' },
+    handoff: { type: 'string', description: '≤200 words for the NEXT agent: what you did, key facts, gotchas, next-task hints' },
   },
   required: ['task_id', 'status', 'summary'],
 }
@@ -82,6 +83,7 @@ const VERIFY_RESULT_SCHEMA = {
     evidence: { type: 'array', items: { type: 'string' } },
     marked: { type: 'boolean' },
     blocker_reason: { type: 'string' },
+    handoff: { type: 'string', description: '≤200 words for the NEXT agent: what was verified, gotchas, next-task hints' },
   },
   required: ['task_id', 'verified', 'evidence', 'marked'],
 }
@@ -102,6 +104,12 @@ const ESCALATION_SCHEMA = {
   required: ['status'],
 }
 
+const PRIMER_SCHEMA = {
+  type: 'object',
+  properties: { primer: { type: 'string' } },
+  required: ['primer'],
+}
+
 // Defensive args parse: the args transport may deliver a JSON-encoded string.
 const A = (typeof args === 'string') ? JSON.parse(args) : (args || {})
 const CHANGE = A.change
@@ -109,7 +117,14 @@ const ROOT = A.repoRoot ? 'cd ' + A.repoRoot + ' && ' : ''
 const STORE = A.store ? ' --store ' + A.store : ''
 const WORKTREE = A.worktree === true
 const TESTGATE = A.testGate === true
-const TESTCOMMAND = A.testCommand || null
+  const TESTCOMMAND = A.testCommand || null
+
+  // Model tiers (add-pipeline-efficiency D1): flash defaults, host-overridable per run.
+  const MODELS = {
+    implementer: A.implementerModel || 'deepseek/deepseek-v4-flash-0731',
+    verifier: A.verifierModel || 'qwen/qwen3.8-flash',
+    utility: A.utilityModel || 'qwen/qwen3.8-flash',
+  }
 if (!CHANGE) {
   throw new Error('args.change is required — the kebab-case name of a planning-complete OpenSpec change')
 }
@@ -138,7 +153,7 @@ async function escalate(task, impl, verif) {
      JSON.stringify(questions.map(function (q) { return { question: q } })),
      'Then return the bridge JSON as {status, answers}. Do NOT retry on non-ok statuses; do NOT guess answers.',
     ].join('\n'),
-    { label: 'escalate:' + task.id, phase: 'Escalate', agentType: 'general-purpose', effort: 'low', schema: ESCALATION_SCHEMA },
+    { label: 'escalate:' + task.id, phase: 'Escalate', agentType: 'general-purpose', effort: 'low', model: MODELS.utility, schema: ESCALATION_SCHEMA },
   )
   return esc || { status: 'error' }
 }
@@ -153,7 +168,7 @@ const snap = await agent(
    'and a 10-line excerpt of the instruction string. Do NOT implement anything.',
    'STATE MAPPING (verbatim from the payload): "ready" when progress.remaining > 0; "all_done" when no incomplete tasks remain; "blocked" ONLY when the payload itself reports it with non-empty missingArtifacts. Never infer blocked from anything else.',
   ].join('\n'),
-  { label: 'load:' + CHANGE, phase: 'Load', agentType: 'general-purpose', effort: 'low', schema: APPLY_SNAP_SCHEMA },
+  { label: 'load:' + CHANGE, phase: 'Load', agentType: 'general-purpose', effort: 'low', model: MODELS.utility, schema: APPLY_SNAP_SCHEMA },
 )
 if (!snap) {
   return { change: CHANGE, error: 'load-failed', note: 'load agent returned null — check the change name and repo root' }
@@ -175,7 +190,31 @@ if (snap.state === 'blocked' && (snap.missing_artifacts || []).length > 0) { // 
     note: 'Planning is incomplete — finish planning (openspec-plan-change) before applying.',
   }
 }
-log('Loaded: ' + snap.progress.total + ' tasks, ' + snap.progress.complete + ' complete, state ' + snap.state)
+  log('Loaded: ' + snap.progress.total + ' tasks, ' + snap.progress.complete + ' complete, state ' + snap.state)
+
+  // Primer (D2): ONE distillation of design/specs for the whole run — later
+  // agents consult this instead of re-reading the files (guidance, not authority).
+  const handoffLog = []
+  function contextBlock() {
+    const parts = []
+    if (primerText) parts.push('PRIMER (distilled from design/specs — guidance, not authority):\n' + primerText)
+    if (handoffLog.length) parts.push('RECENT HANDOFFS (guidance):\n' + handoffLog.slice(-3).join('\n---\n'))
+    return parts.length ? parts.join('\n\n') : '(no primer or handoffs yet — rely on the files)'
+  }
+  const primer = await agent(
+    [TOOL,
+     'Produce the CONTEXT PRIMER for change "' + CHANGE + '" (change dir: ' + (snap.change_dir || 'openspec/changes/' + CHANGE) + ').',
+     'Read design.md and the capability spec files under specs/ ONCE. Distill — ≤1,500 characters —:',
+     '- the design decisions (D-numbers + one line each),',
+     '- the component/file map (what lives where, absolute paths under the repo root),',
+     '- conventions and gotchas a task implementer must know,',
+     '- anything in the apply instruction excerpt that changes the tasks.',
+     'Return {primer} as a single string. Guidance quality matters: later agents will consult THIS instead of re-reading the files.',
+    ].join('\n'),
+    { label: 'primer:' + CHANGE, phase: 'Load', agentType: 'general-purpose', effort: 'medium', model: MODELS.utility, schema: PRIMER_SCHEMA },
+  )
+  const primerText = primer ? String(primer.primer || '').slice(0, 6000) : null
+  log('Primer: ' + (primerText ? primerText.length + ' chars' : 'UNAVAILABLE (agents fall back to files)'))
 
 // --- Phase: Implement -------------------------------------------------------
 phase('Implement')
@@ -199,7 +238,7 @@ while (guard++ < MAX_ITERATIONS) {
 
   // Implementer (effort high). Distinct from the verifier by design (ADR-0002).
   const impl = await agent(
-    [TOOL, IMPLEMENTER_CONTRACT, '',
+    [TOOL, IMPLEMENTER_CONTRACT, '', contextBlock(), '',
      'Assigned task: ' + task.id + ' — ' + task.description,
      'WORKING DIRECTORY: ' + (REPO_ABS || '(unknown — ask the host)') + ' — EVERY file you create or edit MUST use an ABSOLUTE path under that root. Relative paths resolve against a DIFFERENT session cwd and land in the wrong repository (observed failure).',
      WORKTREE
@@ -209,39 +248,45 @@ while (guard++ < MAX_ITERATIONS) {
        ? 'TEST GATE: run `' + TESTCOMMAND + '`. A failing outcome means you report status "paused" with test_outcome describing the failure — a non-passing gate can never be reported as implemented.'
        : 'TEST GATE: not enabled for this run.',
      '',
-     'Execute the task, then return {task_id, status, summary, files_touched[], worktree_path?, test_outcome?, question_for_host?}. OMIT worktree_path unless ISOLATION was requested for this run; files_touched entries MUST be absolute paths.',
+     'Execute the task, then return {task_id, status, summary, files_touched[], worktree_path?, test_outcome?, question_for_host?, handoff?}. OMIT worktree_path unless ISOLATION was requested for this run; files_touched entries MUST be absolute paths. handoff: ≤200 words for the NEXT agent — what you did, key facts, gotchas, next-task hints.',
      'status "implemented" requires the task work actually done' + (TESTGATE ? ' and the gated tests passing' : '') + '.',
     ].join('\n'),
-    { label: 'implement:' + task.id, phase: 'Implement', agentType: 'general-purpose', effort: 'high', schema: TASK_RESULT_SCHEMA },
+    { label: 'implement:' + task.id, phase: 'Implement', agentType: 'general-purpose', effort: 'high', model: MODELS.implementer, schema: TASK_RESULT_SCHEMA },
   )
   if (!impl || impl.status !== 'implemented') {
-    // Blocker: stop dispatch immediately, ONE batched escalation (D7).
+    // Blocker: stop dispatch immediately, ONE batched escalation (D7/ADR-0002).
+    if (impl && impl.worktree_path) worktrees.push(impl.worktree_path)
+    if (impl && impl.handoff) handoffLog.push('implementer/' + task.id + ': ' + String(impl.handoff).slice(0, 1200))
     phase('Escalate')
     const esc = await escalate(task, impl, null)
     if (esc.status === 'ok') {
-      // Resume the SAME task with the host's decisions applied.
-      log('Host answered — resuming task ' + task.id + ' with decisions applied')
+      // True resume (add-pipeline-efficiency D4): the SAME child continues with
+      // everything it learned. Engine constraints: no schema/gate/effort/model
+      // on a resumed call — the output is TEXT and is routed to the independent
+      // verifier below (which remains a fresh spawn).
+      log('Host answered — resuming task ' + task.id + ' via resume (context preserved)')
       const retry = await agent(
-        [TOOL, IMPLEMENTER_CONTRACT, '',
+        [IMPLEMENTER_CONTRACT,
          'Assigned task: ' + task.id + ' — ' + task.description,
          'WORKING DIRECTORY: ' + (REPO_ABS || '(unknown)') + ' — absolute paths only, as before.',
+         'The host resolved your blocker. Apply these decisions:',
          JSON.stringify(esc.answers || []),
          '',
          WORKTREE ? 'ISOLATION: continue in the worktree you created (report worktree_path).' : 'ISOLATION: none requested for this run.',
          TESTGATE ? 'TEST GATE: `' + TESTCOMMAND + '` must pass before reporting implemented.' : 'TEST GATE: not enabled.',
          '',
-         'Return {task_id, status, summary, files_touched[], worktree_path?, test_outcome?}.',
+         'Finish the task now. Then reply with a SHORT TEXT summary: status, files touched (absolute paths), test outcome. Do NOT call StructuredOutput — it is not available on this resumed session.',
         ].join('\n'),
-        { label: 'implement:' + task.id + ':resumed', phase: 'Implement', agentType: 'general-purpose', effort: 'high', schema: TASK_RESULT_SCHEMA },
+        { label: 'implement:' + task.id, resume: 'implement:' + task.id, phase: 'Implement' },
       )
-      if (!retry || retry.status !== 'implemented') {
+      if (!retry) {
         return {
           change: CHANGE, error: 'blocker-unresolved', blocked_task: task.id,
-          needs_input: { task: task.id, escalation: esc, note: 'The task blocked again after the host answered. No checkbox was marked.' },
+          needs_input: { task: task.id, escalation: esc, note: 'The resumed implementer returned nothing. No checkbox was marked.' },
           progress: s.progress, next: 'host-decide-then-resume',
         }
       }
-      impl = retry
+      impl = { task_id: task.id, status: 'implemented', summary: String(retry).slice(0, 600), files_touched: [], handoff: '' }
       phase('Implement')
     } else {
       return {
@@ -251,21 +296,20 @@ while (guard++ < MAX_ITERATIONS) {
       }
     }
   }
-  if (WORKTREE && impl.worktree_path) worktrees.push(impl.worktree_path) // collect only when isolation was requested
 
   // Checkbox verifier — a DISTINCT agent; the only one allowed to edit tasks.md.
   const verif = await agent(
-    [TOOL, VERIFIER_CONTRACT, '',
+    [TOOL, VERIFIER_CONTRACT, '', contextBlock(), '',
      'Verify task ' + task.id + ' — ' + task.description,
      'The implementer reported: ' + JSON.stringify({ summary: impl.summary, files_touched: impl.files_touched, test_outcome: impl.test_outcome }),
      TESTGATE ? 'The gated tests (`' + TESTCOMMAND + '`) MUST be passing for verification to succeed — confirm from the reported outcome and, where feasible, by reading the affected files.' : '',
      'WORKING DIRECTORY: verify files under the repo root ' + (REPO_ABS || '(unknown)') + ' — use ABSOLUTE paths and confirm every files_touched entry EXISTS at its absolute path before verifying.',
      'Steps: read the implemented files yourself (never trust the report alone); check the work matches the task description;',
      'if verified, edit tasks.md (change dir: ' + (s.change_dir || 'openspec/changes/' + CHANGE + ')') + ' marking THIS task checkbox from `[ ]` to `[x]` — no other edit;',
-     'return {task_id, verified, evidence[], marked}. evidence[] entries cite ABSOLUTE file:line, command output, or test results.',
+     'return {task_id, verified, evidence[], marked, handoff?}. evidence[] entries cite ABSOLUTE file:line, command output, or test results. handoff: ≤200 words for the NEXT agent — what was verified, gotchas, next-task hints.',
      'If verification fails, set verified=false, marked=false, and blocker_reason — do NOT mark the checkbox.',
     ].join('\n'),
-    { label: 'verify:' + task.id, phase: 'Implement', agentType: 'general-purpose', effort: 'medium', schema: VERIFY_RESULT_SCHEMA },
+    { label: 'verify:' + task.id, phase: 'Implement', agentType: 'general-purpose', effort: 'medium', model: MODELS.verifier, schema: VERIFY_RESULT_SCHEMA },
   )
   if (!verif || verif.verified !== true || verif.marked !== true) {
     phase('Escalate')
@@ -302,6 +346,7 @@ while (guard++ < MAX_ITERATIONS) {
     }
   } else {
     log('Task ' + task.id + ' verified + marked (' + (s.progress.complete + 1) + '/' + s.progress.total + ')')
+  if (verif && verif.handoff) handoffLog.push('verifier/' + task.id + ': ' + String(verif.handoff).slice(0, 1200))
   }
 }
 
@@ -309,7 +354,7 @@ while (guard++ < MAX_ITERATIONS) {
 phase('Report')
 const final = await agent(
   [TOOL, 'Final apply state: ' + ROOT + 'openspec instructions apply --change "' + CHANGE + '" --json' + STORE + ' — return the snapshot only. Do NOT implement anything.'].join('\n'),
-  { label: 'final:' + CHANGE, phase: 'Report', agentType: 'general-purpose', effort: 'minimal', schema: APPLY_SNAP_SCHEMA },
+  { label: 'final:' + CHANGE, phase: 'Report', agentType: 'general-purpose', effort: 'minimal', model: MODELS.utility, schema: APPLY_SNAP_SCHEMA },
 )
 return {
   change: CHANGE,
