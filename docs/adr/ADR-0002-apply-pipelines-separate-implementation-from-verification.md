@@ -33,3 +33,7 @@ Three structural facts constrain the pipeline's design:
 - **Treat null agent results as deliberate skips:** rejected — the safe direction is to treat them as blockers; a false skip is unrecoverable, while a false blocker costs one host round-trip.
 - **Persistent journal replay for pause/resume:** rejected — ADR-0001 keeps resumption through the host re-invoking the workflow; the CLI status graph and `tasks.md` checkboxes are the only durable state, so pause/resume stays stateless.
 - **Sandbox enforcement of the archive/update prohibition:** rejected — the family's established trust model is prompt-contract enforcement with host-side review; no workflow code path invokes the forbidden verbs, and adding a sandbox would be a new extension surface without a demonstrated bypass.
+
+## Follow-ups (2026-09-07)
+
+- **Nested sub-agent decomposition + `steer_subagent`: DEFERRED** (recorded in `add-pipeline-efficiency`, design D6). Revisit trigger: when measured production runs show individual implementation tasks exceeding the implementer's context budget (~5 files / context overflow). Until then the two-level implementer/verifier structure stands, now running on flash-tier model tiers with the context primer + rolling handoffs from `add-pipeline-efficiency`.

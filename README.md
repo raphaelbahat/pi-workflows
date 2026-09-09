@@ -55,14 +55,15 @@ land flat by basename at `<project>/.pi/workflows/` — the resolver scans non-r
 - `change` **(required)** — kebab-case change name
 - `mode` — `one` (default: author exactly the first `ready` artifact), `scaffold` (create + report first instructions, no write), or `apply-ready` (loop resolve→author→QA until every planning artifact is `done`/`skipped`)
 - `maxArtifacts` — apply-ready cap per run (default 12); the return names remaining artifacts so a later run resumes idempotently
-- `create` — set truthy to let the resolve stage run `openspec new change` (host pre-approves by passing it)
+- `authorModel` / `utilityModel` — flash-tier defaults (`qwen/qwen3.8-flash`; author @ `high`, utility @ `low`) — promote per run for demanding artifacts
 - `intent` — optional host-authored brief for the author agent
 - `repoRoot`, `store` — repo root for the CLI; store id appended as `--store`
 - Requires the checkpoint-bridge extension: if `ask_user_via_host` is absent, the run returns a friendly `checkpoint-bridge-not-installed` error instead of authoring (install: `pi install npm:pi-checkpoint-bridge`)
 
 ### openspec-apply-change
 - `change` **(required)** — kebab-case name of a planning-complete change
-- `worktree` — run-level worktree isolation per implementer (default **off**); created worktree paths are returned — the host integrates and removes
+- `implementerModel` / `verifierModel` / `utilityModel` — flash-tier defaults (`deepseek/deepseek-v4-flash-0731` @ `high` / `qwen/qwen3.8-flash` @ `medium` / `low`); promote per run for demanding tasks
+- Context primer: ONE design/spec distillation per run injected into every implementer/verifier prompt (guidance, not authority — files and the CLI are the truth); rolling handoffs (last 2–3, ≤200 words) carry working context between agents
 - `testGate` / `testCommand` — gated tests must pass before a task reports implemented (`testCommand` required when `testGate` is true)
 - `repoRoot`, `store` — as above
 - Implementer agents never touch `tasks.md`; a separate checkbox-verifier agent marks checkboxes with `evidence[]`; hard stop + ONE batched bridge escalation on the first blocker; `needs_input` when no host answers
@@ -100,7 +101,9 @@ pi -p --subagents-workflow-file="$HOME/pi-workflows/workflows/pi-plugin/pi-plugi
   then `skillshare sync extras -g --force`. Retire scratch projects with `--remove-target … --prune` on both extras.
 
 ## Validation history
-
+- 2026-09-07: `add-pipeline-efficiency` implemented (model tiers, context primer, rolling handoffs, true-resume
+  corrective passes, context discipline — nested decomposition DEFERRED with a measurable revisit trigger);
+  the resumed `add-cgc-session-lifecycle-gate` production run (12/16 → 16/16) is its measured validation.
 - 2026-09-06: step 5 implemented + measured pilots PASSED: `apply-ready` loop on `add-pilot-note` (5 agents,
   ~246k tokens, ~116 s, planning_complete true — bounded; the first attempt ran away at 79 agents on an
   author-returned skip that never settles in status, fixed by skipSettled + maxIterations); `openspec-apply-change`
