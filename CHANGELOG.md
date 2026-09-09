@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.3.0](https://github.com/raphaelbahat/pi-workflows/compare/v1.2.1...v1.3.0) (2026-09-09)
+
+
+### Features
+
+* add-pipeline-efficiency — model tiers, context primer, rolling handoffs, true resume; nested decomposition deferred (ADR-0002) ([065f0fe](https://github.com/raphaelbahat/pi-workflows/commit/065f0fe23538485e703416dfb2cfaa3a6f4063e0))
+* model tiers + context discipline in plan-change (add-pipeline-efficiency task 2.1) ([65f38a6](https://github.com/raphaelbahat/pi-workflows/commit/65f38a66a22049fbc1638e5d05004ce521541fff))
+* pipeline efficiency in apply-change — model tiers, context primer, rolling handoffs, true resume (add-pipeline-efficiency tasks 1.1-1.5) ([75a7473](https://github.com/raphaelbahat/pi-workflows/commit/75a74731a30440112ad3b5990a58bab3abca0327))
+
+
+### Bug Fixes
+
+* apply Load/re-query map state verbatim + blocked requires non-empty missingArtifacts (minimal-effort Load misread 'ready' as 'blocked') ([d755529](https://github.com/raphaelbahat/pi-workflows/commit/d755529bc02256313502fe4c68807b4c09b8cec7))
+
 ## [1.2.1](https://github.com/raphaelbahat/pi-workflows/compare/v1.2.0...v1.2.1) (2026-09-07)
 
 
