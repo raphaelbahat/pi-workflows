@@ -93,6 +93,12 @@ const CHANGE = A.change
 const MODE = A.mode || 'one'
 const ROOT = A.repoRoot ? 'cd ' + A.repoRoot + ' && ' : ''
 const STORE = A.store ? ' --store ' + A.store : ''
+
+// Model tiers (add-pipeline-efficiency D1): flash defaults, host-overridable per run.
+const MODELS = {
+  author: A.authorModel || 'qwen/qwen3.8-flash',
+  utility: A.utilityModel || 'qwen/qwen3.8-flash',
+}
 if (!CHANGE) {
   throw new Error('args.change is required — the kebab-case change name')
 }
@@ -118,7 +124,7 @@ const snap = await agent(
     '(id, status, requires, outputPath for every artifact, in the CLI\'s dependency order). Do NOT write any file.',
     'If the openspec command fails or returns a null-shape: set schema_name to "CLI-ERROR", artifacts to [], planning_complete to false — NEVER fabricate an empty healthy graph.',
   ].join('\n'),
-  { label: 'resolve:' + CHANGE, phase: 'Resolve', agentType: 'general-purpose', effort: 'minimal', schema: GRAPH_SCHEMA },
+  { label: 'resolve:' + CHANGE, phase: 'Resolve', agentType: 'general-purpose', effort: 'minimal', model: MODELS.utility, schema: GRAPH_SCHEMA },
 )
 if (!snap) {
   return { change: CHANGE, mode: MODE, error: 'resolve-failed' }
@@ -178,7 +184,7 @@ if (MODE === 'apply-ready') {
     iteration++
     const s = iteration === 1 ? snap : await agent(
       [TOOL, 'Re-run: ' + ROOT + 'openspec status --change "' + CHANGE + '" --json' + STORE + ' and return the graph snapshot only. Do NOT write any file. If the command fails, set schema_name to "CLI-ERROR" and artifacts to [] — never fabricate.'].join('\n'),
-      { label: 'status:' + CHANGE + ':' + iteration, phase: 'Resolve', agentType: 'general-purpose', effort: 'minimal', schema: GRAPH_SCHEMA },
+      { label: 'status:' + CHANGE + ':' + iteration, phase: 'Resolve', agentType: 'general-purpose', effort: 'minimal', model: MODELS.utility, schema: GRAPH_SCHEMA },
     )
     if (!s) return { change: CHANGE, mode: MODE, error: 'status-failed', authored, note: 'status agent returned null — re-run resumes idempotently' }
     const ready = s.artifacts.filter(function (a) { return a.status === 'ready' && !skipSettled.has(a.id) })
@@ -187,7 +193,8 @@ if (MODE === 'apply-ready') {
       if (authored >= cap) break
       const res = await agent(
         [TOOL, CONTRACT, GRILL, '',
-         'Assign artifact: ' + art.id + ' (change "' + CHANGE + '").',
+        'Assign artifact: ' + art.id + ' (change "' + CHANGE + '").',
+        'CONTEXT DISCIPLINE: the CLI payloads and the dependency artifacts you read are your sources — cite them; do not re-read unrelated files.',
          'Intent from the host (may be empty — rely on existing artifacts and the user): ' + (A.intent || '(none provided)'),
          '',
          'Steps:',
@@ -201,7 +208,7 @@ if (MODE === 'apply-ready') {
          '   use SHALL/MUST; scenario blocks use four-hash #### headings.',
          '7. Return {id, action:"wrote", path, assumption?} — assumption = any judgment call you made, one line.',
         ].join('\n'),
-        { label: 'author:' + art.id + ':' + iteration, phase: 'Author', agentType: 'general-purpose', effort: 'high', schema: WRITE_SCHEMA },
+        { label: 'author:' + art.id + ':' + iteration, phase: 'Author', agentType: 'general-purpose', effort: 'high', model: MODELS.author, schema: WRITE_SCHEMA },
       )
       if (!res) {
         // Null is a blocker, never success — stop and surface remaining work.
@@ -250,7 +257,7 @@ if (MODE === 'apply-ready') {
          'Finish with a short text verdict (no tool calls after it): whether the artifact is defect-free and what the',
          'strict validation said.',
         ].join('\n'),
-        { label: 'qa:' + art.id + ':' + iteration, phase: 'QA', agentType: 'general-purpose', effort: 'medium',
+        { label: 'qa:' + art.id + ':' + iteration, phase: 'QA', agentType: 'general-purpose', effort: 'medium', model: MODELS.utility,
           gate: ROOT + 'openspec validate "' + CHANGE + '" --type change --strict' + STORE },
       )
       log('Authored+QA: ' + art.id + ' (' + authored + '/' + cap + ')' + (qa ? '' : ' — QA/strict-gate FAILED (non-blocking here; the final status + host review catch it)'))
@@ -258,7 +265,7 @@ if (MODE === 'apply-ready') {
   }
   const final = await agent(
     [TOOL, 'Final status: ' + ROOT + 'openspec status --change "' + CHANGE + '" --json' + STORE + ' — return the graph snapshot only. Do NOT write any file. If the command fails, set schema_name to "CLI-ERROR" and artifacts to [] — never fabricate.'].join('\n'),
-    { label: 'final-status:' + CHANGE, phase: 'Resolve', agentType: 'general-purpose', effort: 'minimal', schema: GRAPH_SCHEMA },
+    { label: 'final-status:' + CHANGE, phase: 'Resolve', agentType: 'general-purpose', effort: 'minimal', model: MODELS.utility, schema: GRAPH_SCHEMA },
   )
   const remaining = final
     ? final.artifacts.filter(function (a) { return a.status !== 'done' && a.status !== 'skipped' && !skipSettled.has(a.id) }).map(function (a) { return a.id })
@@ -282,6 +289,7 @@ const written = await agent(
     GRILL,
     '',
     'Assign artifact: ' + target.id + ' (change "' + CHANGE + '").',
+    'CONTEXT DISCIPLINE: the CLI payloads and the dependency artifacts you read are your sources — cite them; do not re-read unrelated files.',
     'Intent from the host (may be empty — rely on existing artifacts and the user): ' + (A.intent || '(none provided)'),
     '',
     'Steps:',
@@ -295,7 +303,7 @@ const written = await agent(
     '   use SHALL/MUST; scenario blocks use four-hash #### headings.',
     '7. Return {id, action:"wrote", path, assumption?} — assumption = any judgment call you made, one line.',
   ].join('\n'),
-  { label: 'author:' + target.id, phase: 'Author', agentType: 'general-purpose', effort: 'high', schema: WRITE_SCHEMA },
+  { label: 'author:' + target.id, phase: 'Author', agentType: 'general-purpose', effort: 'high', model: MODELS.author, schema: WRITE_SCHEMA },
 )
 if (!written) {
   return { change: CHANGE, mode: MODE, error: 'author-failed', artifact: target.id, note: 'author agent returned null — inspect the run; do not retry automatically (null may be a deliberate skip)' }
@@ -330,7 +338,7 @@ const qa = await agent(
     'Finish with a short text verdict (no tool calls after it): whether the artifact is defect-free and what the',
     'strict validation said.',
   ].join('\n'),
-  { label: 'qa:' + target.id, phase: 'QA', agentType: 'general-purpose', effort: 'medium',
+  { label: 'qa:' + target.id, phase: 'QA', agentType: 'general-purpose', effort: 'medium', model: MODELS.utility,
     gate: ROOT + 'openspec validate "' + CHANGE + '" --type change --strict' + STORE },
 )
 
