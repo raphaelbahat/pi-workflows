@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/raphaelbahat/pi-workflows/compare/v1.3.0...v1.4.0) (2026-09-10)
+
+
+### Features
+
+* tool routing to ctx_* compressed tools in apply/plan prompts — transcript diagnosis: 103 plain read/bash calls, 0 ctx_* usage; 3.3M tokens dominated by prompt replay + un-compressed tool outputs ([4c2353d](https://github.com/raphaelbahat/pi-workflows/commit/4c2353d66dabc17af86735ed40638348836f8cc0))
+
 ## [1.3.0](https://github.com/raphaelbahat/pi-workflows/compare/v1.2.1...v1.3.0) (2026-09-09)
 
 
