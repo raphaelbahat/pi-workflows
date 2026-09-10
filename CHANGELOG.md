@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/raphaelbahat/pi-workflows/compare/v1.5.0...v1.5.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* context_* sidecar named as explicit fallback in all TOOL ROUTING lines; frontmatter ext: selectors restore ctx_*/ask_user_via_host to sub-agents (production run had ZERO extension tools — tools: all surfaces built-ins only) ([5e40566](https://github.com/raphaelbahat/pi-workflows/commit/5e4056630188cdd7fa74d73d033890acfdb7694f))
+
 ## [1.5.0](https://github.com/raphaelbahat/pi-workflows/compare/v1.4.0...v1.5.0) (2026-09-10)
 
 
