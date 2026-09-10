@@ -57,6 +57,15 @@ const ROOT = A.repoRoot ? 'cd ' + A.repoRoot + ' && ' : ''
 const STORE = A.store ? ' --store ' + A.store : ''
 const PLAN_MODE = A.planMode || 'one' // proposals-only default (lived evidence: full authoring without grill rounds is dangerous)
 const DIGEST = A.digestFile || 'CAMPAIGN.md'
+// Model tiers (add-pipeline-efficiency D1): flash defaults, host-overridable per run.
+const MODELS = {
+  utility: A.utilityModel || 'qwen/qwen3.8-flash',
+}
+// Forwarded into every per-item plan-change invocation (host may override per run).
+const PLAN_MODEL_ARGS = {
+  authorModel: A.authorModel || null,
+  utilityModel: A.utilityModel || null,
+}
 if (PLAN_MODE !== 'one' && PLAN_MODE !== 'scaffold') {
   throw new Error("args.planMode must be 'one' or 'scaffold' — deeper authoring per item is an explicit host re-invocation, never a campaign default")
 }
@@ -77,7 +86,7 @@ if (Array.isArray(A.items) && A.items.length) {
      'Return the names of ALL pending changes as {changes: [name, ...]} (the campaign will scaffold any that do not exist yet).',
      'If openspec list reports zero changes, return {changes: []}.',
     ].join('\n'),
-    { label: 'discover', phase: 'Discover', agentType: 'general-purpose', effort: 'minimal', schema: DISCOVER_SCHEMA },
+    { label: 'discover', phase: 'Discover', agentType: 'general-purpose', effort: 'minimal', model: MODELS.utility, schema: DISCOVER_SCHEMA },
   )
   items = (disc && disc.changes) ? disc.changes.map(function (n) { return { change: n, intent: null } }) : []
 }
@@ -96,7 +105,7 @@ for (const item of items) {
      'If it already exists, treat that as scaffolded (note it). If the command fails for another reason, return outcome "failed" with the note — never retry.',
      'Do NOT author any artifact. Do NOT run any other openspec verb.',
     ].join('\n'),
-    { label: 'scaffold:' + item.change, phase: 'Scaffold', agentType: 'general-purpose', effort: 'minimal', schema: SCAFFOLD_SCHEMA },
+    { label: 'scaffold:' + item.change, phase: 'Scaffold', agentType: 'general-purpose', effort: 'minimal', model: MODELS.utility, schema: SCAFFOLD_SCHEMA },
   )
   const outcome = sc && sc.outcome === 'failed' ? 'failed' : 'scaffolded'
   shards.push({ item: item.change, mode: PLAN_MODE, step: 'scaffold', outcome: outcome, note: (sc && sc.note) || '', written_path: null, question: null })
@@ -117,6 +126,8 @@ const planResults = await parallel(
         repoRoot: A.repoRoot || null,
         store: A.store || null,
         intent: item ? item.intent : null,
+        authorModel: PLAN_MODEL_ARGS.authorModel,
+        utilityModel: PLAN_MODEL_ARGS.utilityModel,
       })
     }
   }),
@@ -171,7 +182,7 @@ const composer = await agent(
    'if no answer is available, record the ambiguity in the digest instead of guessing.',
    'Return {digest_path, summary} — summary under 120 words.',
   ].join('\n'),
-  { label: 'compose', phase: 'Compose', agentType: 'general-purpose', effort: 'medium', schema: COMPOSER_SCHEMA },
+  { label: 'compose', phase: 'Compose', agentType: 'general-purpose', effort: 'medium', model: MODELS.utility, schema: COMPOSER_SCHEMA },
 )
 
 return {

@@ -94,6 +94,11 @@ const GATE_SCHEMA = {
 // Defensive args parse: the args transport may deliver a JSON-encoded string.
 const A = (typeof args === 'string') ? JSON.parse(args) : (args || {})
 const CHANGE = A.change
+// Model tiers (add-pipeline-efficiency D1): flash defaults, host-overridable per run.
+const MODELS = {
+  verifier: A.verifierModel || 'qwen/qwen3.8-flash',
+  utility: A.utilityModel || 'qwen/qwen3.8-flash',
+}
 const ROOT = A.repoRoot ? 'cd ' + A.repoRoot + ' && ' : ''
 const REPORT = A.reportFile || '.openspec-reports/openspec-validate-report-' + (CHANGE || 'change') + '.md'
 if (!CHANGE) {
@@ -127,6 +132,7 @@ const DIMENSIONS = [
 function reviewerPrompt(dim, snap) {
   return [
     'You are one read-only reviewer dimension in an OpenSpec change validation sweep.',
+    'TOOL ROUTING: prefer ctx_grep/ctx_shell over read/bash for searches and bulk reads — compressed receipts; pipe test runs through | tail -50. Plain read ONLY for small files you must see in full.',
     'CHANGE: ' + CHANGE,
     dim.lens,
     '',
@@ -154,7 +160,7 @@ const snap = await agent(
     'Count tasks.md checkboxes: total and done. Note whether the change declares capabilities or sets skip_specs.',
     'Return the snapshot object. Do NOT read the full content of artifacts — later agents do that.',
   ].join('\n'),
-  { label: 'snapshot:' + CHANGE, phase: 'Load', agentType: 'general-purpose', effort: 'minimal', schema: SNAPSHOT_SCHEMA },
+  { label: 'snapshot:' + CHANGE, phase: 'Load', agentType: 'general-purpose', effort: 'minimal', model: MODELS.utility, schema: SNAPSHOT_SCHEMA },
 )
 if (!snap) {
   return { change: CHANGE, error: 'load-failed', note: 'snapshot agent returned null — check the change name and repo root' }
@@ -171,6 +177,7 @@ const reviews = await parallel(
         phase: 'Review',
         agentType: 'general-purpose',
         effort: 'high',
+        model: MODELS.verifier,
         schema: ISSUES_SCHEMA,
       })
     }
@@ -201,7 +208,7 @@ const gate = await agent(
     'If the command itself cannot run (no openspec binary, wrong root), set cli_ok=false, command="(unavailable)", and explain in output_excerpt.',
     'Do NOT fix anything. Do NOT run any other command.',
   ].join('\n'),
-  { label: 'gate:' + CHANGE, phase: 'Gate', agentType: 'general-purpose', effort: 'low', schema: GATE_SCHEMA },
+  { label: 'gate:' + CHANGE, phase: 'Gate', agentType: 'general-purpose', effort: 'low', model: MODELS.utility, schema: GATE_SCHEMA },
 )
 const cliOk = gate ? gate.cli_ok === true : false
 log('Gate: ' + (gate ? (cliOk ? 'PASS' : 'FAIL') : 'gate agent failed') + (gate ? ' — ' + gate.command : ''))
@@ -233,7 +240,7 @@ const composeSummary = await agent(
     '',
     'After the single write call, call no further tools except StructuredOutput — return a text summary under 150 words: verdict, counts per severity, the single most important finding if any.',
   ].join('\n'),
-  { label: 'compose:' + CHANGE, phase: 'Compose', agentType: 'general-purpose', effort: 'high' },
+  { label: 'compose:' + CHANGE, phase: 'Compose', agentType: 'general-purpose', effort: 'high', model: MODELS.utility },
 )
 
 return {
