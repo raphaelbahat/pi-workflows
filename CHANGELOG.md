@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/raphaelbahat/pi-workflows/compare/v1.4.0...v1.5.0) (2026-09-10)
+
+
+### Features
+
+* propagate model tiers + tool routing to validate-change and campaign (add-pipeline-efficiency applied family-wide) ([b29fbd9](https://github.com/raphaelbahat/pi-workflows/commit/b29fbd959aaaf01e3d3a7a162f5f70bc885b9929))
+
 ## [1.4.0](https://github.com/raphaelbahat/pi-workflows/compare/v1.3.0...v1.4.0) (2026-09-10)
 
 
