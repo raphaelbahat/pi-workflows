@@ -194,7 +194,7 @@ if (MODE === 'apply-ready') {
       const res = await agent(
         [TOOL, CONTRACT, GRILL, '',
         'Assign artifact: ' + art.id + ' (change "' + CHANGE + '").',
-        'CONTEXT DISCIPLINE: the CLI payloads and the dependency artifacts you read are your sources — cite them; do not re-read unrelated files. TOOL ROUTING: prefer ctx_grep/ctx_read/ctx_shell over read/bash for searches and bulk reads (compressed receipts).',
+        'CONTEXT DISCIPLINE: the CLI payloads and the dependency artifacts you read are your sources — cite them; do not re-read unrelated files. TOOL ROUTING: prefer ctx_grep/ctx_read/ctx_shell over read/bash for searches and bulk reads (compressed receipts). If ctx_* tools are not available in this session, FALLBACK to context_search/context_get (the pi-context sidecar); plain read/bash are the last resort.',
          'Intent from the host (may be empty — rely on existing artifacts and the user): ' + (A.intent || '(none provided)'),
          '',
          'Steps:',
@@ -289,7 +289,7 @@ const written = await agent(
     GRILL,
     '',
     'Assign artifact: ' + target.id + ' (change "' + CHANGE + '").',
-    'CONTEXT DISCIPLINE: the CLI payloads and the dependency artifacts you read are your sources — cite them; do not re-read unrelated files. TOOL ROUTING: prefer ctx_grep/ctx_read/ctx_shell over read/bash for searches and bulk reads (compressed receipts).',
+    'CONTEXT DISCIPLINE: the CLI payloads and the dependency artifacts you read are your sources — cite them; do not re-read unrelated files. TOOL ROUTING: prefer ctx_grep/ctx_read/ctx_shell over read/bash for searches and bulk reads (compressed receipts). If ctx_* tools are not available in this session, FALLBACK to context_search/context_get (the pi-context sidecar); plain read/bash are the last resort.',
     'Intent from the host (may be empty — rely on existing artifacts and the user): ' + (A.intent || '(none provided)'),
     '',
     'Steps:',

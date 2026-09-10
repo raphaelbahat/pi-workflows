@@ -241,7 +241,7 @@ while (guard++ < MAX_ITERATIONS) {
     [TOOL, IMPLEMENTER_CONTRACT, '', contextBlock(), '',
      'Assigned task: ' + task.id + ' — ' + task.description,
      'WORKING DIRECTORY: ' + (REPO_ABS || '(unknown — ask the host)') + ' — EVERY file you create or edit MUST use an ABSOLUTE path under that root. Relative paths resolve against a DIFFERENT session cwd and land in the wrong repository (observed failure).',
-     'TOOL ROUTING: prefer ctx_grep/ctx_read/ctx_shell over read/bash for searches and bulk reads — they return compressed receipts. Plain read ONLY for small files you must see in full; pipe test runs through | tail -50. Do NOT re-read design.md — the PRIMER covers it; re-read a section only when the primer is insufficient for your task.',
+     'TOOL ROUTING: prefer ctx_grep/ctx_read/ctx_shell over read/bash for searches and bulk reads — they return compressed receipts. If ctx_* tools are not available in this session, FALLBACK to context_search/context_get (the pi-context sidecar) for the same job; plain read/bash are the last resort. Plain read ONLY for small files you must see in full; pipe test runs through | tail -50. Do NOT re-read design.md — the PRIMER covers it; re-read a section only when the primer is insufficient for your task.',
      WORKTREE
        ? 'ISOLATION: create a task-scoped git worktree (e.g. git worktree add ../' + CHANGE + '-' + task.id.replace(/[^a-z0-9]+/gi, '-') + '), do ALL work inside it, NEVER merge into the main tree, and report the worktree path in worktree_path. The host integrates and removes it.'
        : 'ISOLATION: none requested for this run — edit the repository working tree directly.',
@@ -303,7 +303,7 @@ while (guard++ < MAX_ITERATIONS) {
     [TOOL, VERIFIER_CONTRACT, '', contextBlock(), '',
      'Verify task ' + task.id + ' — ' + task.description,
      'The implementer reported: ' + JSON.stringify({ summary: impl.summary, files_touched: impl.files_touched, test_outcome: impl.test_outcome }),
-     'TOOL ROUTING: prefer ctx_grep/ctx_read/ctx_shell over read/bash for searches and bulk reads — compressed receipts, full output stays in the local sidecar. Use ctx_expand for prior large outputs instead of re-reading files. Plain read ONLY for small files you must see in full.',
+     'TOOL ROUTING: prefer ctx_grep/ctx_read/ctx_shell over read/bash for searches and bulk reads — compressed receipts, full output stays in the local sidecar. Use ctx_expand for prior large outputs instead of re-reading files. If ctx_* tools are not available in this session, FALLBACK to context_search/context_get (the pi-context sidecar) for the same job; plain read/bash are the last resort. Plain read ONLY for small files you must see in full.',
      TESTGATE ? 'The gated tests (`' + TESTCOMMAND + '`) MUST be passing for verification to succeed — confirm from the reported outcome and, where feasible, by reading the affected files.' : '',
      'WORKING DIRECTORY: verify files under the repo root ' + (REPO_ABS || '(unknown)') + ' — use ABSOLUTE paths and confirm every files_touched entry EXISTS at its absolute path before verifying.',
      'Steps: read the implemented files yourself (never trust the report alone); check the work matches the task description;',
