@@ -103,7 +103,14 @@ pi -p --subagents-workflow-file="$HOME/pi-workflows/workflows/pi-plugin/pi-plugi
 ## Validation history
 - 2026-09-07: `add-pipeline-efficiency` implemented (model tiers, context primer, rolling handoffs, true-resume
   corrective passes, context discipline — nested decomposition DEFERRED with a measurable revisit trigger);
-  the resumed `add-cgc-session-lifecycle-gate` production run (12/16 → 16/16) is its measured validation.
+  the resumed `add-cgc-session-lifecycle-gate` run (12/16 → 16/16) completed the measurement: **16/16,
+  `all_done`, zero incidents** (no loops, no runaway, no wrong-repo writes — all stability fixes held), quality
+  gates clean (203/203 tests, typecheck pass). **Token target MISSED**: ~3.3M total (~825k/task vs the stopped
+  run's ~400k/task baseline), 309 tool uses (≈20/agent) dominated by test-run and read outputs; the 20.7 h
+  wall clock is machine sleep + provider latency, not compute. Verdict: the efficiency machinery is
+  mechanically sound and flash tiers did not degrade quality, but the token target for implementation-heavy
+  tasks was not met — diagnosis + tuning (test-output ingestion caps, tool-output budgets) required before
+  the next production run.
 - 2026-09-06: step 5 implemented + measured pilots PASSED: `apply-ready` loop on `add-pilot-note` (5 agents,
   ~246k tokens, ~116 s, planning_complete true — bounded; the first attempt ran away at 79 agents on an
   author-returned skip that never settles in status, fixed by skipSettled + maxIterations); `openspec-apply-change`
