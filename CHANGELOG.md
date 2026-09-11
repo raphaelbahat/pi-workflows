@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.2](https://github.com/raphaelbahat/pi-workflows/compare/v1.5.1...v1.5.2) (2026-09-11)
+
+
+### Bug Fixes
+
+* apply-run effort tiers (load medium, primer high) + primer pointer-misfire guard (reject path-like primers — run [#2](https://github.com/raphaelbahat/pi-workflows/issues/2) loop root cause) ([f54eb60](https://github.com/raphaelbahat/pi-workflows/commit/f54eb60ecb7814b2c084b10a8d2ea697c07a1179))
+
 ## [1.5.1](https://github.com/raphaelbahat/pi-workflows/compare/v1.5.0...v1.5.1) (2026-09-10)
 
 
