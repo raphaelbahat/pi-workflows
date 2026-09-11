@@ -168,10 +168,9 @@ const snap = await agent(
    'and a 10-line excerpt of the instruction string. Do NOT implement anything.',
    'STATE MAPPING (verbatim from the payload): "ready" when progress.remaining > 0; "all_done" when no incomplete tasks remain; "blocked" ONLY when the payload itself reports it with non-empty missingArtifacts. Never infer blocked from anything else.',
   ].join('\n'),
-  { label: 'load:' + CHANGE, phase: 'Load', agentType: 'general-purpose', effort: 'low', model: MODELS.utility, schema: APPLY_SNAP_SCHEMA },
+  { label: 'load:' + CHANGE, phase: 'Load', agentType: 'general-purpose', effort: 'medium', model: MODELS.utility, schema: APPLY_SNAP_SCHEMA },
 )
 if (!snap) {
-  return { change: CHANGE, error: 'load-failed', note: 'load agent returned null — check the change name and repo root' }
 }
 // Absolute repo root, derived from the CLI's change_dir (authoritative).
 // Implementer/verifier file operations MUST resolve against this: a workflow
@@ -197,7 +196,7 @@ if (snap.state === 'blocked' && (snap.missing_artifacts || []).length > 0) { // 
   const handoffLog = []
   function contextBlock() {
     const parts = []
-    if (primerText) parts.push('PRIMER (distilled from design/specs — guidance, not authority):\n' + primerText)
+    if (primerText) parts.push('PRIMER (distilled from design/specs — guidance, not authority; the text below IS the primer — do not fetch any file to obtain it):\n' + primerText)
     if (handoffLog.length) parts.push('RECENT HANDOFFS (guidance):\n' + handoffLog.slice(-3).join('\n---\n'))
     return parts.length ? parts.join('\n\n') : '(no primer or handoffs yet — rely on the files)'
   }
@@ -209,12 +208,15 @@ if (snap.state === 'blocked' && (snap.missing_artifacts || []).length > 0) { // 
      '- the component/file map (what lives where, absolute paths under the repo root),',
      '- conventions and gotchas a task implementer must know,',
      '- anything in the apply instruction excerpt that changes the tasks.',
-     'Return {primer} as a single string. Guidance quality matters: later agents will consult THIS instead of re-reading the files.',
+     'Return {primer} as a single string containing the distilled guidance TEXT ITSELF — never a file path, never a command, never a reference to a file you wrote. Do NOT write any file (no bash writes, no /tmp artifacts). Guidance quality matters: later agents consult THIS string instead of re-reading the files.',
     ].join('\n'),
-    { label: 'primer:' + CHANGE, phase: 'Load', agentType: 'general-purpose', effort: 'medium', model: MODELS.utility, schema: PRIMER_SCHEMA },
+    { label: 'primer:' + CHANGE, phase: 'Load', agentType: 'general-purpose', effort: 'high', model: MODELS.utility, schema: PRIMER_SCHEMA },
   )
-  const primerText = primer ? String(primer.primer || '').slice(0, 6000) : null
-  log('Primer: ' + (primerText ? primerText.length + ' chars' : 'UNAVAILABLE (agents fall back to files)'))
+  const rawPrimer = primer ? String(primer.primer || '').trim() : ''
+  // Pointer-misfire guard (production run #2): a flash-tier primer returned a /tmp file path instead of the text,
+  // which sent implementers into a fetch loop. Accept only substantial, non-path-like primer text.
+  const primerText = rawPrimer && rawPrimer.length >= 120 && !/^\/(tmp|home)\//.test(rawPrimer) ? rawPrimer.slice(0, 6000) : null
+  log('Primer: ' + (primerText ? primerText.length + ' chars' : 'UNAVAILABLE (agents fall back to files)' + (rawPrimer ? ' — rejected misfire: ' + rawPrimer.slice(0, 60) : '')))
 
 // --- Phase: Implement -------------------------------------------------------
 phase('Implement')
