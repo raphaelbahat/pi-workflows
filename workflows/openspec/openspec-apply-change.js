@@ -263,7 +263,7 @@ const implResponse = await agent(
     ].join('\n'),
     { label: 'implement:' + task.id, phase: 'Implement', agentType: 'general-purpose', effort: 'high', model: MODELS.implementer },
   )
-  const impl = parseAgentJson(implResponse, { task_id: task.id, status: 'failed', summary: String(implResponse || 'empty implementer response') })
+  let impl = parseAgentJson(implResponse, { task_id: task.id, status: 'failed', summary: String(implResponse || 'empty implementer response') })
   if (!impl || impl.status !== 'implemented') {
     // Blocker: stop dispatch immediately, ONE batched escalation (D7/ADR-0002).
     if (impl && impl.worktree_path) worktrees.push(impl.worktree_path)
