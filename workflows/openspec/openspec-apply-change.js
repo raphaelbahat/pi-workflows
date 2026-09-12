@@ -104,10 +104,17 @@ const ESCALATION_SCHEMA = {
   required: ['status'],
 }
 
-const PRIMER_SCHEMA = {
-  type: 'object',
-  properties: { primer: { type: 'string' } },
-  required: ['primer'],
+function parseAgentJson(text, fallback) {
+  const raw = String(text || '').trim()
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)
+  const candidate = fenced ? fenced[1] : raw
+  try { return JSON.parse(candidate) } catch (_) {}
+  const start = candidate.indexOf('{')
+  const end = candidate.lastIndexOf('}')
+  if (start >= 0 && end > start) {
+    try { return JSON.parse(candidate.slice(start, end + 1)) } catch (_) {}
+  }
+  return fallback
 }
 
 // Defensive args parse: the args transport may deliver a JSON-encoded string.
@@ -239,7 +246,7 @@ while (guard++ < MAX_ITERATIONS) {
   log('Task ' + task.id + ': dispatching implementer')
 
   // Implementer (effort high). Distinct from the verifier by design (ADR-0002).
-  const impl = await agent(
+const implResponse = await agent(
     [TOOL, IMPLEMENTER_CONTRACT, '', contextBlock(), '',
      'Assigned task: ' + task.id + ' — ' + task.description,
      'WORKING DIRECTORY: ' + (REPO_ABS || '(unknown — ask the host)') + ' — EVERY file you create or edit MUST use an ABSOLUTE path under that root. Relative paths resolve against a DIFFERENT session cwd and land in the wrong repository (observed failure).',
@@ -254,8 +261,9 @@ while (guard++ < MAX_ITERATIONS) {
      'Execute the task, then return {task_id, status, summary, files_touched[], worktree_path?, test_outcome?, question_for_host?, handoff?}. OMIT worktree_path unless ISOLATION was requested for this run; files_touched entries MUST be absolute paths. handoff: ≤200 words for the NEXT agent — what you did, key facts, gotchas, next-task hints.',
      'status "implemented" requires the task work actually done' + (TESTGATE ? ' and the gated tests passing' : '') + '.',
     ].join('\n'),
-    { label: 'implement:' + task.id, phase: 'Implement', agentType: 'general-purpose', effort: 'high', model: MODELS.implementer, schema: TASK_RESULT_SCHEMA },
+    { label: 'implement:' + task.id, phase: 'Implement', agentType: 'general-purpose', effort: 'high', model: MODELS.implementer },
   )
+  const impl = parseAgentJson(implResponse, { task_id: task.id, status: 'failed', summary: String(implResponse || 'empty implementer response') })
   if (!impl || impl.status !== 'implemented') {
     // Blocker: stop dispatch immediately, ONE batched escalation (D7/ADR-0002).
     if (impl && impl.worktree_path) worktrees.push(impl.worktree_path)
@@ -301,7 +309,7 @@ while (guard++ < MAX_ITERATIONS) {
   }
 
   // Checkbox verifier — a DISTINCT agent; the only one allowed to edit tasks.md.
-  const verif = await agent(
+const verifResponse = await agent(
     [TOOL, VERIFIER_CONTRACT, '', contextBlock(), '',
      'Verify task ' + task.id + ' — ' + task.description,
      'The implementer reported: ' + JSON.stringify({ summary: impl.summary, files_touched: impl.files_touched, test_outcome: impl.test_outcome }),
@@ -313,15 +321,16 @@ while (guard++ < MAX_ITERATIONS) {
      'return {task_id, verified, evidence[], marked, handoff?}. evidence[] entries cite ABSOLUTE file:line, command output, or test results. handoff: ≤200 words for the NEXT agent — what was verified, gotchas, next-task hints.',
      'If verification fails, set verified=false, marked=false, and blocker_reason — do NOT mark the checkbox.',
     ].join('\n'),
-    { label: 'verify:' + task.id, phase: 'Implement', agentType: 'general-purpose', effort: 'medium', model: MODELS.verifier, schema: VERIFY_RESULT_SCHEMA },
+    { label: 'verify:' + task.id, phase: 'Implement', agentType: 'general-purpose', effort: 'medium', model: MODELS.verifier },
   )
+  const verif = parseAgentJson(verifResponse, { task_id: task.id, verified: false, marked: false, evidence: ['Unparseable verifier response: ' + String(verifResponse || 'empty')] })
   if (!verif || verif.verified !== true || verif.marked !== true) {
     phase('Escalate')
     const esc = await escalate(task, impl, verif || null)
     if (esc.status === 'ok') {
       // Host decided: the host's answer may be "it is actually done" (host marks
       // the checkbox itself) or new guidance. Resume verification once.
-      const reverif = await agent(
+      const reverifResponse = await agent(
         [TOOL, VERIFIER_CONTRACT, '',
          'Re-verify task ' + task.id + ' — ' + task.description,
          'The host resolved the verification blocker. Apply these decisions:',
@@ -330,8 +339,9 @@ while (guard++ < MAX_ITERATIONS) {
          'If the decisions confirm the work is done and you can now verify it: mark the checkbox per your contract.',
          'Return {task_id, verified, evidence[], marked}.',
         ].join('\n'),
-        { label: 'verify:' + task.id + ':resumed', phase: 'Implement', agentType: 'general-purpose', effort: 'medium', schema: VERIFY_RESULT_SCHEMA },
+        { label: 'verify:' + task.id + ':resumed', phase: 'Implement', agentType: 'general-purpose', effort: 'medium' },
       )
+      const reverif = parseAgentJson(reverifResponse, { task_id: task.id, verified: false, marked: false, evidence: ['Unparseable resumed verifier response: ' + String(reverifResponse || 'empty')] })
       if (!reverif || reverif.verified !== true || reverif.marked !== true) {
         return {
           change: CHANGE, error: 'verification-unresolved', blocked_task: task.id,
