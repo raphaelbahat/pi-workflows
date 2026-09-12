@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.3](https://github.com/raphaelbahat/pi-workflows/compare/v1.5.2...v1.5.3) (2026-09-12)
+
+
+### Bug Fixes
+
+* allow parsed implementer result to resume after escalation ([773ed1f](https://github.com/raphaelbahat/pi-workflows/commit/773ed1f461b4c8730aa78789e8062a1dbc3153fd))
+* use lenient text verdicts for apply implementer and verifier agents ([bc1e1b2](https://github.com/raphaelbahat/pi-workflows/commit/bc1e1b282ce230b12237c5c0b752db3b18534bd2))
+
 ## [1.5.2](https://github.com/raphaelbahat/pi-workflows/compare/v1.5.1...v1.5.2) (2026-09-11)
 
 
