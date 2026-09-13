@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.0](https://github.com/raphaelbahat/pi-workflows/compare/v1.9.0...v1.10.0) (2026-09-13)
+
+
+### Features
+
+* add-fallback-retry-pause (ADR-0004) — bounded gate-sleep pause + primary retry before fallback switching, all three workflows; docs: aligned with README revisions (tracked install, valid target dirs), openspec-index to directory pointers, validation-history removed per review ([ec4b6ce](https://github.com/raphaelbahat/pi-workflows/commit/ec4b6ce941d131566b7a088b4b890781fe4051ef))
+
 ## [1.9.0](https://github.com/raphaelbahat/pi-workflows/compare/v1.8.0...v1.9.0) (2026-09-13)
 
 
