@@ -12,10 +12,9 @@ export const meta = {
 
 const TOOL = [
   'TOOL DISCIPLINE: issue at most ONE tool call per message; never batch two or more tool calls in a single turn.',
-  'If a tool call is rejected as malformed, silently re-issue that ONE call cleanly. Never restate or quote tool-call markup as text.',
-  'End by calling StructuredOutput exactly once with the required object — do not answer in prose instead.',
+  'If a tool call is rejected as malformed, silently re-issue that ONE call cleanly — AT MOST 3 TIMES. After 3 rejections of the same call, stop retrying and return your best-effort text answer. Never loop on a rejected call. Never restate or quote tool-call markup as text.',
+  'End your run with ONE final answer. If a StructuredOutput tool is available in your session, call it exactly once with the required object; otherwise end with a plain-text answer (raw JSON is fine) and stop. Do not answer in prose when the tool is required.',
 ].join('\n')
-
 const IMPLEMENTER_CONTRACT = [
   'IMPLEMENTER CONTRACT (verbatim prohibitions — contractual trust model, ADR-0002):',
   '- You MUST NOT create, edit, or delete tasks.md. Marking checkboxes is forbidden for you.',
@@ -160,14 +159,14 @@ async function escalate(task, impl, verif) {
      JSON.stringify(questions.map(function (q) { return { question: q } })),
      'Then return the bridge JSON as {status, answers}. Do NOT retry on non-ok statuses; do NOT guess answers.',
     ].join('\n'),
-    { label: 'escalate:' + task.id, phase: 'Escalate', agentType: 'general-purpose', effort: 'low', model: MODELS.utility, schema: ESCALATION_SCHEMA },
+    { label: 'escalate:' + task.id, phase: 'Escalate', agentType: 'general-purpose', effort: 'low', model: MODELS.utility },
   )
-  return esc || { status: 'error' }
+  return parseAgentJson(esc, { status: 'error' }) || { status: 'error' }
 }
 
 // --- Phase: Load ------------------------------------------------------------
 phase('Load')
-const snap = await agent(
+const snapRaw = await agent(
   [TOOL,
    'Load the apply state for change "' + CHANGE + '" WITHOUT modifying anything.',
    'Run: ' + ROOT + 'openspec instructions apply --change "' + CHANGE + '" --json' + STORE,
@@ -175,9 +174,11 @@ const snap = await agent(
    'and a 10-line excerpt of the instruction string. Do NOT implement anything.',
    'STATE MAPPING (verbatim from the payload): "ready" when progress.remaining > 0; "all_done" when no incomplete tasks remain; "blocked" ONLY when the payload itself reports it with non-empty missingArtifacts. Never infer blocked from anything else.',
   ].join('\n'),
-  { label: 'load:' + CHANGE, phase: 'Load', agentType: 'general-purpose', effort: 'medium', model: MODELS.utility, schema: APPLY_SNAP_SCHEMA },
+  { label: 'load:' + CHANGE, phase: 'Load', agentType: 'general-purpose', effort: 'medium', model: MODELS.utility },
 )
+const snap = parseAgentJson(snapRaw, null)
 if (!snap) {
+  return { change: CHANGE, error: 'load-failed', note: 'load agent returned unparseable output — re-run resumes idempotently (checkboxes are the state)' }
 }
 // Absolute repo root, derived from the CLI's change_dir (authoritative).
 // Implementer/verifier file operations MUST resolve against this: a workflow
@@ -207,7 +208,7 @@ if (snap.state === 'blocked' && (snap.missing_artifacts || []).length > 0) { // 
     if (handoffLog.length) parts.push('RECENT HANDOFFS (guidance):\n' + handoffLog.slice(-3).join('\n---\n'))
     return parts.length ? parts.join('\n\n') : '(no primer or handoffs yet — rely on the files)'
   }
-  const primer = await agent(
+  const primerResponse = await agent(
     [TOOL,
      'Produce the CONTEXT PRIMER for change "' + CHANGE + '" (change dir: ' + (snap.change_dir || 'openspec/changes/' + CHANGE) + ').',
      'Read design.md and the capability spec files under specs/ ONCE. Distill — ≤1,500 characters —:',
@@ -215,11 +216,13 @@ if (snap.state === 'blocked' && (snap.missing_artifacts || []).length > 0) { // 
      '- the component/file map (what lives where, absolute paths under the repo root),',
      '- conventions and gotchas a task implementer must know,',
      '- anything in the apply instruction excerpt that changes the tasks.',
-     'Return {primer} as a single string containing the distilled guidance TEXT ITSELF — never a file path, never a command, never a reference to a file you wrote. Do NOT write any file (no bash writes, no /tmp artifacts). Guidance quality matters: later agents consult THIS string instead of re-reading the files.',
+     'Reply with the distilled guidance TEXT ITSELF as your final message — plain text, no StructuredOutput tool, no JSON wrapper, never a file path, never a command, never a reference to a file you wrote. Do NOT write any file (no bash writes, no /tmp artifacts). Guidance quality matters: later agents consult THIS text instead of re-reading the files.',
     ].join('\n'),
-    { label: 'primer:' + CHANGE, phase: 'Load', agentType: 'general-purpose', effort: 'high', model: MODELS.utility, schema: PRIMER_SCHEMA },
+    { label: 'primer:' + CHANGE, phase: 'Load', agentType: 'general-purpose', effort: 'high', model: MODELS.utility },
   )
-  const rawPrimer = primer ? String(primer.primer || '').trim() : ''
+  // Text-verdict primer (QA pattern): accept either raw prose or a {primer:...} JSON wrapper.
+  const parsedPrimer = parseAgentJson(primerResponse, null)
+  const rawPrimer = String((parsedPrimer && parsedPrimer.primer) || primerResponse || '').trim()
   // Pointer-misfire guard (production run #2): a flash-tier primer returned a /tmp file path instead of the text,
   // which sent implementers into a fetch loop. Accept only substantial, non-path-like primer text.
   const primerText = rawPrimer && rawPrimer.length >= 120 && !/^\/(tmp|home)\//.test(rawPrimer) ? rawPrimer.slice(0, 6000) : null
@@ -231,10 +234,10 @@ let guard = 0
 const MAX_ITERATIONS = (snap.progress.total || 0) + 4 // every task + re-queries; hard runaway backstop
 while (guard++ < MAX_ITERATIONS) {
   // Re-query per dispatch: the CLI checkbox progress is authoritative (D4).
-  const s = guard === 1 ? snap : await agent(
+  const s = guard === 1 ? snap : parseAgentJson(await agent(
     [TOOL, 'Re-run: ' + ROOT + 'openspec instructions apply --change "' + CHANGE + '" --json' + STORE + ' — return the snapshot only (state, progress, tasks[]). Map the payload\'s "state" field VERBATIM ("ready" when progress.remaining > 0; "all_done" when none; "blocked" only if the payload itself says so). Do NOT implement anything.'].join('\n'),
-    { label: 'status:' + CHANGE + ':' + guard, phase: 'Implement', agentType: 'general-purpose', effort: 'minimal', schema: APPLY_SNAP_SCHEMA },
-  )
+    { label: 'status:' + CHANGE + ':' + guard, phase: 'Implement', agentType: 'general-purpose', effort: 'minimal' },
+  ), null)
   if (!s) {
     return { change: CHANGE, error: 'status-failed', progress: snap.progress, note: 'status agent returned null — re-run resumes idempotently (checkboxes are the state)' }
   }
@@ -366,10 +369,11 @@ const verifResponse = await agent(
 
 // --- Phase: Report ----------------------------------------------------------
 phase('Report')
-const final = await agent(
+const finalRaw = await agent(
   [TOOL, 'Final apply state: ' + ROOT + 'openspec instructions apply --change "' + CHANGE + '" --json' + STORE + ' — return the snapshot only. Do NOT implement anything.'].join('\n'),
-  { label: 'final:' + CHANGE, phase: 'Report', agentType: 'general-purpose', effort: 'minimal', model: MODELS.utility, schema: APPLY_SNAP_SCHEMA },
+  { label: 'final:' + CHANGE, phase: 'Report', agentType: 'general-purpose', effort: 'minimal' },
 )
+const final = parseAgentJson(finalRaw, null)
 return {
   change: CHANGE,
   state: final ? final.state : 'unknown',
