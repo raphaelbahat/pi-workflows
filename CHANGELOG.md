@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/raphaelbahat/pi-workflows/compare/v1.5.4...v1.6.0) (2026-09-13)
+
+
+### Features
+
+* openspec-apply-campaign — serial apply of all unimplemented changes in dependency order, fail-soft, host-handoff digest ([f613c20](https://github.com/raphaelbahat/pi-workflows/commit/f613c206941fe80f1ad0910634dd94c3a64fbbc6))
+
 ## [1.5.4](https://github.com/raphaelbahat/pi-workflows/compare/v1.5.3...v1.5.4) (2026-09-13)
 
 
