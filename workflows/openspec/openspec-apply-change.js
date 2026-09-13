@@ -137,6 +137,43 @@ const TESTGATE = A.testGate === true
     verifier: A.verifierModel || 'qwen/qwen3.8-flash',
     utility: A.utilityModel || 'qwen/qwen3.8-flash',
   }
+
+// --- Model fallback (add-workflow-model-fallback D1/D2) ---------------------
+// Terminal provider failures (pi-subagents retries transient errors internally;
+// e.g. OpenRouter shared-pool 429) resolve agent() to null — agentFB retries the SAME
+// call down a hardcoded cross-provider chain, filtered to the models the Load phase
+// discovered via `pi --list-models` (secret-free; never auth.json/models.json).
+const FALLBACKS = {
+  'qwen/qwen3.8-flash': ['deepseek/deepseek-v4-flash-0731', 'z-ai/glm-5.3-flash'],
+  'deepseek/deepseek-v4-flash-0731': ['qwen/qwen3.8-flash', 'z-ai/glm-5.3-flash'],
+  'z-ai/glm-5.3-flash': ['qwen/qwen3.8-flash'],
+}
+let AUTHENTICATED_MODELS = null // set by the Load-phase discovery; null = unfiltered
+function chainFor(primary) {
+  const base = FALLBACKS[primary] || ['deepseek/deepseek-v4-flash-0731', 'qwen/qwen3.8-flash', 'z-ai/glm-5.3-flash']
+  let chain = base.filter(function (m) { return m !== primary })
+  if (AUTHENTICATED_MODELS && AUTHENTICATED_MODELS.length) {
+    chain = chain.filter(function (m) { return AUTHENTICATED_MODELS.indexOf(m) !== -1 })
+  }
+  return chain
+}
+async function agentFB(prompt, opts) {
+  const r = await agent(prompt, opts)
+  if (r !== null && r !== undefined) return r
+  const primary = (opts && opts.model) || null
+  const chain = chainFor(primary)
+  if (!chain.length) return r
+  log('fallback hop: agent "' + ((opts && opts.label) || '') + '" returned null on ' + (primary || 'the default model') + ' (terminal provider error, e.g. 429 shared-pool rate limit) — retrying on: ' + chain[0])
+  for (let i = 0; i < chain.length; i++) {
+    const fb = Object.assign({}, opts, { model: chain[i] })
+    delete fb.resume
+    delete fb.gate
+    const rr = await agent(prompt, fb)
+    if (rr !== null && rr !== undefined) return rr
+    if (i + 1 < chain.length) log('fallback hop: ' + chain[i] + ' also failed — next: ' + chain[i + 1])
+  }
+  return null
+}
 if (!CHANGE) {
   throw new Error('args.change is required — the kebab-case name of a planning-complete OpenSpec change')
 }
@@ -158,7 +195,7 @@ function blockerQuestions(task, impl, verif) {
 // single ask_user_via_host call and returns the bridge JSON.
 async function escalate(task, impl, verif) {
   const questions = blockerQuestions(task, impl, verif)
-  const esc = await agent(
+  const esc = await agentFB(
     [TOOL,
      'You are the escalation channel for a blocked OpenSpec apply pipeline (change "' + CHANGE + '").',
      'Call the ask_user_via_host tool EXACTLY ONCE with ALL of these questions batched:',
@@ -172,17 +209,21 @@ async function escalate(task, impl, verif) {
 
 // --- Phase: Load ------------------------------------------------------------
 phase('Load')
-const snapRaw = await agent(
+const snapRaw = await agentFB(
   [TOOL,
    'Load the apply state for change "' + CHANGE + '" WITHOUT modifying anything.',
    'Run: ' + ROOT + 'openspec instructions apply --change "' + CHANGE + '" --json' + STORE,
    'Return the snapshot: state, change_dir, progress, tasks[] (id, description, done), missing_artifacts,',
-   'and a 10-line excerpt of the instruction string. Do NOT implement anything.',
+   'a 10-line excerpt of the instruction string, and authenticated_models. Do NOT implement anything.',
+   'DISCOVERY (secret-free, add-workflow-model-fallback D2): run `ctx_shell pi --list-models` and parse every provider/model row into "provider/model" strings; return them as authenticated_models (array of strings). NEVER read auth.json or models.json — they contain user secrets. If the command fails, return authenticated_models as an empty array.',
    'STATE MAPPING (verbatim from the payload): "ready" when progress.remaining > 0; "all_done" when no incomplete tasks remain; "blocked" ONLY when the payload itself reports it with non-empty missingArtifacts. Never infer blocked from anything else.',
   ].join('\n'),
   { label: 'load:' + CHANGE, phase: 'Load', agentType: 'general-purpose', effort: 'medium', model: MODELS.utility },
 )
 const snap = parseAgentJson(snapRaw, null)
+// D2: feed the discovered configured-model list to the fallback filter (secret-free CLI table).
+AUTHENTICATED_MODELS = (snap && Array.isArray(snap.authenticated_models) && snap.authenticated_models.length) ? snap.authenticated_models : null
+if (AUTHENTICATED_MODELS) log('Discovery: ' + AUTHENTICATED_MODELS.length + ' configured models on file for fallback filtering')
 if (!snap) {
   return { change: CHANGE, error: 'load-failed', note: 'load agent returned unparseable output — re-run resumes idempotently (checkboxes are the state)' }
 }
@@ -214,7 +255,7 @@ if (snap.state === 'blocked' && (snap.missing_artifacts || []).length > 0) { // 
     if (handoffLog.length) parts.push('RECENT HANDOFFS (guidance):\n' + handoffLog.slice(-3).join('\n---\n'))
     return parts.length ? parts.join('\n\n') : '(no primer or handoffs yet — rely on the files)'
   }
-  const primerResponse = await agent(
+  const primerResponse = await agentFB(
     [TOOL,
      'Produce the CONTEXT PRIMER for change "' + CHANGE + '" (change dir: ' + (snap.change_dir || 'openspec/changes/' + CHANGE) + ').',
      'Read design.md and the capability spec files under specs/ ONCE. Distill — ≤1,500 characters —:',
@@ -242,7 +283,7 @@ let nullStatus = 0
 const MAX_ITERATIONS = (snap.progress.total || 0) + 4 // every task + re-queries; hard runaway backstop
 while (guard++ < MAX_ITERATIONS) {
   // Re-query per dispatch: the CLI checkbox progress is authoritative (D4).
-  const s = guard === 1 ? snap : parseAgentJson(await agent(
+  const s = guard === 1 ? snap : parseAgentJson(await agentFB(
     [TOOL, 'Re-run: ' + ROOT + 'openspec instructions apply --change "' + CHANGE + '" --json' + STORE + ' — run the command, then reply with EXACTLY its JSON output VERBATIM inside a ```json fenced block and NOTHING else — no prose, no summary. Do NOT implement anything.'].join('\n'),
     { label: 'status:' + CHANGE + ':' + guard, phase: 'Implement', agentType: 'general-purpose', effort: 'minimal' },
   ), null)
@@ -263,7 +304,7 @@ while (guard++ < MAX_ITERATIONS) {
   log('Task ' + task.id + ': dispatching implementer')
 
   // Implementer (effort high). Distinct from the verifier by design (ADR-0002).
-const implResponse = await agent(
+const implResponse = await agentFB(
     [TOOL, IMPLEMENTER_CONTRACT, '', contextBlock(), '',
      'Assigned task: ' + task.id + ' — ' + task.description,
      'WORKING DIRECTORY: ' + (REPO_ABS || '(unknown — ask the host)') + ' — EVERY file you create or edit MUST use an ABSOLUTE path under that root. Relative paths resolve against a DIFFERENT session cwd and land in the wrong repository (observed failure).',
@@ -296,7 +337,7 @@ const implResponse = await agent(
       // on a resumed call — the output is TEXT and is routed to the independent
       // verifier below (which remains a fresh spawn).
       log('Host answered — resuming task ' + task.id + ' via resume (context preserved)')
-      const retry = await agent(
+      const retry = await agentFB(
         [IMPLEMENTER_CONTRACT,
          'Assigned task: ' + task.id + ' — ' + task.description,
          'WORKING DIRECTORY: ' + (REPO_ABS || '(unknown)') + ' — absolute paths only, as before.',
@@ -320,7 +361,7 @@ const implResponse = await agent(
       phase('Implement')
     } else if (UNANSWERED === 'fix') {
       log('Task ' + task.id + ': escalation unanswered — self-guided fix attempt (onUnansweredEscalation=fix)')
-      const selffix = await agent(
+      const selffix = await agentFB(
         [IMPLEMENTER_CONTRACT,
          'Assigned task: ' + task.id + ' — ' + task.description,
          'WORKING DIRECTORY: ' + (REPO_ABS || '(unknown)') + ' — absolute paths only, as before.',
@@ -349,7 +390,7 @@ const implResponse = await agent(
   }
 
   // Checkbox verifier — a DISTINCT agent; the only one allowed to edit tasks.md.
-const verifResponse = await agent(
+const verifResponse = await agentFB(
     [TOOL, VERIFIER_CONTRACT, '', contextBlock(), '',
      'Verify task ' + task.id + ' — ' + task.description,
      'The implementer reported: ' + JSON.stringify({ summary: impl.summary, files_touched: impl.files_touched, test_outcome: impl.test_outcome }),
@@ -369,7 +410,7 @@ const verifResponse = await agent(
     if (esc.status === 'ok' || (esc && Array.isArray(esc.answers) && esc.answers.length > 0)) {
       // Host decided: the host's answer may be "it is actually done" (host marks
       // the checkbox itself) or new guidance. Resume verification once.
-      const reverifResponse = await agent(
+      const reverifResponse = await agentFB(
         [TOOL, VERIFIER_CONTRACT, '',
          'Re-verify task ' + task.id + ' — ' + task.description,
          'The host resolved the verification blocker. Apply these decisions:',
@@ -392,7 +433,7 @@ const verifResponse = await agent(
     } else if (UNANSWERED === 'fix' && !(selfFixRounds[task.id] >= 1)) {
       selfFixRounds[task.id] = 1
       log('Task ' + task.id + ': verification escalation unanswered — ONE self-guided fix round (onUnansweredEscalation=fix)')
-      const fixResponse = await agent(
+      const fixResponse = await agentFB(
         [IMPLEMENTER_CONTRACT,
          'Assigned task: ' + task.id + ' — ' + task.description,
          'WORKING DIRECTORY: ' + (REPO_ABS || '(unknown)') + ' — absolute paths only.',
@@ -406,7 +447,7 @@ const verifResponse = await agent(
         { label: 'implement:' + task.id, resume: 'implement:' + task.id, phase: 'Implement' },
       )
       impl = { task_id: task.id, status: 'implemented', summary: String(fixResponse || '').slice(0, 600), files_touched: [], handoff: '' }
-      const reverifResponse = await agent(
+      const reverifResponse = await agentFB(
         [TOOL, VERIFIER_CONTRACT, '',
          'Re-verify task ' + task.id + ' — ' + task.description,
          'The implementer applied ONE self-guided fix: ' + JSON.stringify({ summary: impl.summary }),
@@ -438,7 +479,7 @@ const verifResponse = await agent(
 
 // --- Phase: Report ----------------------------------------------------------
 phase('Report')
-const finalRaw = await agent(
+const finalRaw = await agentFB(
   [TOOL, 'Final apply state: ' + ROOT + 'openspec instructions apply --change "' + CHANGE + '" --json' + STORE + ' — run the command, then reply with EXACTLY its JSON output VERBATIM inside a ```json fenced block and NOTHING else — no prose, no summary. Do NOT implement anything.'].join('\n'),
   { label: 'final:' + CHANGE, phase: 'Report', agentType: 'general-purpose', effort: 'minimal' },
 )

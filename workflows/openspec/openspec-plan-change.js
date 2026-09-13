@@ -91,6 +91,23 @@ const QA_SCHEMA = {
 const A = (typeof args === 'string') ? JSON.parse(args) : (args || {})
 const CHANGE = A.change
 const MODE = A.mode || 'one'
+async function agentFB(prompt, opts) {
+  const r = await agent(prompt, opts)
+  if (r !== null && r !== undefined) return r
+  const primary = (opts && opts.model) || null
+  const chain = chainFor(primary)
+  if (!chain.length) return r
+  log('fallback hop: agent "' + ((opts && opts.label) || '') + '" returned null on ' + (primary || 'the default model') + ' (terminal provider error, e.g. 429 shared-pool rate limit) — retrying on: ' + chain[0])
+  for (let i = 0; i < chain.length; i++) {
+    const fb = Object.assign({}, opts, { model: chain[i] })
+    delete fb.resume
+    delete fb.gate
+    const rr = await agent(prompt, fb)
+    if (rr !== null && rr !== undefined) return rr
+    if (i + 1 < chain.length) log('fallback hop: ' + chain[i] + ' also failed — next: ' + chain[i + 1])
+  }
+  return null
+}
 const ROOT = A.repoRoot ? 'cd ' + A.repoRoot + ' && ' : ''
 const STORE = A.store ? ' --store ' + A.store : ''
 
@@ -111,7 +128,7 @@ log('plan-change: ' + CHANGE + ' | mode: ' + MODE)
 
 // --- Phase: Resolve ---------------------------------------------------------
 phase('Resolve')
-const snap = await agent(
+const snap = await agentFB(
   [
     TOOL,
     CONTRACT,
@@ -182,7 +199,7 @@ if (MODE === 'apply-ready') {
   const maxIterations = cap * 2 + 4
   while (authored < cap && iteration < maxIterations) {
     iteration++
-    const s = iteration === 1 ? snap : await agent(
+    const s = iteration === 1 ? snap : await agentFB(
       [TOOL, 'Re-run: ' + ROOT + 'openspec status --change "' + CHANGE + '" --json' + STORE + ' and return the graph snapshot only. Do NOT write any file. If the command fails, set schema_name to "CLI-ERROR" and artifacts to [] — never fabricate.'].join('\n'),
       { label: 'status:' + CHANGE + ':' + iteration, phase: 'Resolve', agentType: 'general-purpose', effort: 'minimal', model: MODELS.utility, schema: GRAPH_SCHEMA },
     )
@@ -191,7 +208,7 @@ if (MODE === 'apply-ready') {
     if (!ready.length) break // loop terminates: everything is done/skipped or blocked
     for (const art of ready) {
       if (authored >= cap) break
-      const res = await agent(
+      const res = await agentFB(
         [TOOL, CONTRACT, GRILL, '',
         'CONTEXT DISCIPLINE: the CLI payloads and the dependency artifacts you read are your sources — cite them; do not re-read unrelated files. TOOL ROUTING (hard rule): every command via ctx_shell, every content search via ctx_grep, file reads via ctx_read or bounded ranges — NEVER native bash/grep/read for covered operations. Sole exception: the ctx tool returns "not found" — fall back to the native tool and SAY SO in your final reply.',
          'Intent from the host (may be empty — rely on existing artifacts and the user): ' + (A.intent || '(none provided)'),
@@ -242,7 +259,7 @@ if (MODE === 'apply-ready') {
       // StructuredOutput obligation ends naturally after its final message, and
       // the gate makes a failing strict validation fail the agent: a non-null
       // qa return therefore MEANS the strict validation passed.
-      const qa = await agent(
+      const qa = await agentFB(
         [TOOL,
          'QA pass for artifact ' + art.id + ' at ' + (res.path || 'its resolvedOutputPath') + ' (change "' + CHANGE + '").',
          'READ the file, then check and FIX IN PLACE only mechanical defects:',
@@ -262,7 +279,7 @@ if (MODE === 'apply-ready') {
       log('Authored+QA: ' + art.id + ' (' + authored + '/' + cap + ')' + (qa ? '' : ' — QA/strict-gate FAILED (non-blocking here; the final status + host review catch it)'))
     }
   }
-  const final = await agent(
+  const final = await agentFB(
     [TOOL, 'Final status: ' + ROOT + 'openspec status --change "' + CHANGE + '" --json' + STORE + ' — return the graph snapshot only. Do NOT write any file. If the command fails, set schema_name to "CLI-ERROR" and artifacts to [] — never fabricate.'].join('\n'),
     { label: 'final-status:' + CHANGE, phase: 'Resolve', agentType: 'general-purpose', effort: 'minimal', model: MODELS.utility, schema: GRAPH_SCHEMA },
   )
@@ -281,7 +298,7 @@ log('Authoring artifact: ' + target.id + ' (of ' + readyArtifacts.length + ' rea
 
 // --- Phase: Author ----------------------------------------------------------
 
-const written = await agent(
+const written = await agentFB(
   [
     TOOL,
     CONTRACT,
@@ -322,7 +339,7 @@ log('Wrote: ' + (written.path || target.id))
 // QA is unschemad + gate-based (see the apply-ready branch for why — a schema'd
 // QA child looped forever on successful StructuredOutput calls). A non-null qa
 // therefore MEANS the strict validation passed; qa text is the child's verdict.
-const qa = await agent(
+const qa = await agentFB(
   [
     TOOL,
     'QA pass for artifact ' + target.id + ' at ' + (written.path || 'its resolvedOutputPath') + ' (change "' + CHANGE + '").',

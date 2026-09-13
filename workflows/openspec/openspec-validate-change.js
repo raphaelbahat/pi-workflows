@@ -99,6 +99,23 @@ const MODELS = {
   verifier: A.verifierModel || 'qwen/qwen3.8-flash',
   utility: A.utilityModel || 'qwen/qwen3.8-flash',
 }
+async function agentFB(prompt, opts) {
+  const r = await agent(prompt, opts)
+  if (r !== null && r !== undefined) return r
+  const primary = (opts && opts.model) || null
+  const chain = chainFor(primary)
+  if (!chain.length) return r
+  log('fallback hop: agent "' + ((opts && opts.label) || '') + '" returned null on ' + (primary || 'the default model') + ' (terminal provider error, e.g. 429 shared-pool rate limit) — retrying on: ' + chain[0])
+  for (let i = 0; i < chain.length; i++) {
+    const fb = Object.assign({}, opts, { model: chain[i] })
+    delete fb.resume
+    delete fb.gate
+    const rr = await agent(prompt, fb)
+    if (rr !== null && rr !== undefined) return rr
+    if (i + 1 < chain.length) log('fallback hop: ' + chain[i] + ' also failed — next: ' + chain[i + 1])
+  }
+  return null
+}
 const ROOT = A.repoRoot ? 'cd ' + A.repoRoot + ' && ' : ''
 const REPORT = A.reportFile || '.openspec-reports/openspec-validate-report-' + (CHANGE || 'change') + '.md'
 if (!CHANGE) {
@@ -149,7 +166,7 @@ function reviewerPrompt(dim, snap) {
 
 // --- Phase: Load -----------------------------------------------------------
 phase('Load')
-const snap = await agent(
+const snap = await agentFB(
   [
     TOOL,
     CONTRACT,
@@ -199,7 +216,7 @@ for (let i = 0; i < DIMENSIONS.length; i++) {
 log('Review done: ' + issues.length + ' issues from ' + (DIMENSIONS.length - failedDimensions.length) + '/' + DIMENSIONS.length + ' dimensions' + (failedDimensions.length ? ' (failed: ' + failedDimensions.join(', ') + ')' : ''))
 
 // --- Phase: Gate -----------------------------------------------------------
-const gate = await agent(
+const gate = await agentFB(
   [
     TOOL,
     'Run the strict CLI gate for change "' + CHANGE + '" and report the result verbatim.',
@@ -220,7 +237,7 @@ const warnings = issues.filter(function (i) { return i.severity === 'WARNING' })
 const suggestions = issues.filter(function (i) { return i.severity === 'SUGGESTION' })
 const readyToArchive = cliOk && critical.length === 0 && failedDimensions.length === 0
 
-const composeSummary = await agent(
+const composeSummary = await agentFB(
   [
     TOOL,
     'You are composing a validation scorecard report for OpenSpec change "' + CHANGE + '".',
