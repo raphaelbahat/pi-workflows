@@ -19,26 +19,25 @@ workflows in two groups:
 - The [Pi coding agent](https://github.com/earendil-works/pi).
 - The [Pi-subagents](https://github.com/tintinweb/pi-subagents) extension.
 - **OPTIONAL**, _required if using the OpenSpec workflows_: The [checkpoint-bridge](https://www.npmjs.com/package/pi-checkpoint-bridge) extension.
-- **OPTIONAL**: [Skillshare](https://github.com/runkids/skillshare) for distribution.
+- **OPTIONAL**: [Skillshare](https://github.com/runkids/skillshare) for the recommended distribution [and workflows update path](#tracked).
 
 ### Installation
 
 Two paths:
 
-#### Tracked
+- **Tracked**: The _recommend path_; distribution and one-command updates via Skillshare.
+- **Untracked**: _Not recommended_; distribution and updates via Git clone.
 
-**Recommended** — one-command updates via Skillshare:
+#### Tracked
 
 ```bash
 skillshare install raphaelbahat/pi-workflows --track   # preserves .git for updates
 
 # Later updates: git pulls via skillshare
-# skillshare update pi-workflows
+# skillshare update agents --all   # agents-scoped (the bare name may hit the skills source)
 ```
 
 #### Untracked
-
-**Git clone with manual updates**:
 
 ```bash
 git clone https://github.com/raphaelbahat/pi-workflows ~/pi-workflows
@@ -49,21 +48,55 @@ git clone https://github.com/raphaelbahat/pi-workflows ~/pi-workflows
 
 ### Distribution
 
-Register your project as a distribution target (both extras, same target — point the extras at the tracked clone or your git-clone location):
+Register your project as a distribution target (both extras, same target) and point the extras'
+**source** at your installation's `workflows/` directories.
 
-    ```bash
-    skillshare extras pi-workflows-openspec --add-target /path/to/project/.pi/workflows -g
-    skillshare extras pi-workflows-plugins   --add-target /path/to/project/.pi/workflows -g
-    skillshare sync extras -g --force
-    ```
+#### Tracked
+
+A tracked install clones the repo into the Skillshare **agents** source as `_pi-workflows/`
+(the repo has no `SKILL.md`, so Skillshare classifies it as an agents repo):
+
+    ~/.config/skillshare/agents/_pi-workflows/
+
+Fresh setup; register the tracked clone as the extras source:
+
+```bash
+skillshare extras init pi-workflows-openspec --source ~/.config/skillshare/agents/_pi-workflows/workflows/openspec --target /path/to/project/.pi/workflows --mode copy -g --no-tui
+skillshare extras init pi-workflows-plugins --source ~/.config/skillshare/agents/_pi-workflows/workflows/pi-plugin --target /path/to/project/.pi/workflows --mode copy -g --no-tui
+skillshare sync extras -g --force
+```
+
+> [!NOTE]
+> Already have the extras (e.g. previously pointed at a git clone)? Edit their `source:` fields
+> in `~/.config/skillshare/config.yaml` to the tracked paths above — `extras init --force` resets
+> the target list — then re-run `skillshare sync extras -g --force`.
+
+#### Untracked
+
+With the git clone at `~/pi-workflows`, register the clone as the extras source:
+
+```bash
+skillshare extras init pi-workflows-openspec --source ~/pi-workflows/workflows/openspec --target /path/to/project/.pi/workflows --mode copy -g --no-tui
+skillshare extras init pi-workflows-plugins --source ~/pi-workflows/workflows/pi-plugin --target /path/to/project/.pi/workflows --mode copy -g --no-tui
+skillshare sync extras -g --force
+```
+
+Already have the extras with this source? Just add targets:
+
+```bash
+skillshare extras pi-workflows-openspec --add-target /path/to/project/.pi/workflows -g
+skillshare extras pi-workflows-plugins --add-target /path/to/project/.pi/workflows -g
+skillshare sync extras -g --force
+```
 
 ### Update
 
 #### Tracked
 
 ```bash
-# Tracked: one-command updates via Skillshare
-skillshare update pi-workflows
+# Tracked: one-command updates via Skillshare (the tracked clone lives under the agents
+# source: ~/.config/skillshare/agents/_pi-workflows — the bare name may hit the skills source)
+skillshare update agents --all
 ```
 
 #### Untracked
@@ -140,5 +173,5 @@ operational notes, and known pi-subagents quirks — lives in
 - **[Development and Maintenance](docs/development-and-maintenance.md)** — skillshare
   distribution mechanics (copy mode!), the CI gate, scripts reference, GPG/release operations,
   and known pi-subagents quirks. References the [OpenSpec Index](docs/openspec-index.md).
-- **[OpenSpec Index](docs/openspec-index.md)** — ADRs (0001–0003), capability specs, and the
+- **[OpenSpec Index](docs/openspec-index.md)** — ADRs, capability specs, and the
   archived/active change inventory, with the archive policy.

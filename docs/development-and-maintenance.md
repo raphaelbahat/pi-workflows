@@ -11,6 +11,14 @@ CI, scripts, distribution mechanics, and operational notes. Related:
 - **Tracked install (recommended for consumers):** `skillshare install raphaelbahat/pi-workflows --track`
   preserves the repo's `.git`, so `skillshare update pi-workflows` later pulls the latest workflows via
   git in one command (see the README's Quick Setup for both installation paths).
+- **Tracked clone path:** the `--track` install clones into the Skillshare **agents** source as
+  `_pi-workflows/` (the repo has no `SKILL.md`, so Skillshare classifies it as an agents repo):
+  `~/.config/skillshare/agents/_pi-workflows/`. Point the extras' `source:` fields at
+  `~/.config/skillshare/agents/_pi-workflows/workflows/openspec` and
+  `~/.config/skillshare/agents/_pi-workflows/workflows/pi-plugin` — edit
+  `~/.config/skillshare/config.yaml` for an existing setup (`extras init --force` resets the
+  target list), then `skillshare sync extras -g --force`. See the README's Distribution section
+  for the full tracked and untracked registration commands.
 - **Valid distribution targets:** `.pi/workflows/`, `.agents/workflows/`, or `<agent dir>/workflows/` —
   any directory the pi-subagents resolver scans works; pick the one your setup already uses.- **Edit at source only** (`~/pi-workflows`), then `skillshare sync extras --force` — targets are
   managed **copies** (mode=copy) that go stale after source edits; plain sync SKIPS conflicting
