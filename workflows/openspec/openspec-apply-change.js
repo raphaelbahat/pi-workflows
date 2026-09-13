@@ -71,7 +71,7 @@ const TASK_RESULT_SCHEMA = {
     worktree_path: { type: 'string' },
     test_outcome: { type: 'string' },
     question_for_host: { type: 'string' },
-    handoff: { type: 'string', description: '≤200 words written FOR THE NEXT SUB-AGENT (the verifier that will verify this task, then the next task\'s implementer) — to make the context immediately at reach for them: absolute paths touched + a few words on what changed in each; decisions made and why (one line each); gotchas/pitfalls hit; current test state; and THE one thing the next sub-agent must know first' },
+    handoff: { type: 'string', description: '≤200 words written FOR THE NEXT SUB-AGENT (the verifier that will verify this task, then the next task\'s implementer) — to make the context immediately at reach for them: absolute paths touched + a few words on what changed in each, PLUS a look-up hint per touched file (one keyword/short string to grep + the changed line range as of your last edit — prefer the keyword if unsure); decisions made and why (one line each); gotchas/pitfalls hit; current test state; and up to THREE ranked must-know items (1 = most critical)' },
   },
   required: ['task_id', 'status', 'summary'],
 }
@@ -84,7 +84,7 @@ const VERIFY_RESULT_SCHEMA = {
     evidence: { type: 'array', items: { type: 'string' } },
     marked: { type: 'boolean' },
     blocker_reason: { type: 'string' },
-    handoff: { type: 'string', description: '≤200 words written FOR THE NEXT SUB-AGENT (the next task\'s implementer — and the verifier re-running this task if it was deferred) — to make the context immediately at reach for them: what you verified and how (file:line anchors), gotchas, open risks, current test state, and THE one thing the next sub-agent must know first' },
+    handoff: { type: 'string', description: '≤200 words written FOR THE NEXT SUB-AGENT (the next task\'s implementer — and the verifier re-running this task if it was deferred) — to make the context immediately at reach for them: what you verified and how (file:line anchors), look-up hints for anything the next agent will need to find (grep keyword/short string first, line range as of your last edit second), gotchas, open risks, current test state, and up to THREE ranked must-know items (1 = most critical)' },
   },
   required: ['task_id', 'verified', 'evidence', 'marked'],
 }
@@ -317,7 +317,7 @@ const implResponse = await agentFB(
        ? 'TEST GATE: the gated suite (`' + TESTCOMMAND + '`) must pass before you report implemented — one full-suite run at the end of your task is enough if your scoped runs already passed.'
        : 'TEST GATE: not enabled for this run.',
      '',
-     'Execute the task, then return {task_id, status, summary, files_touched[], worktree_path?, test_outcome?, question_for_host?, handoff?}. OMIT worktree_path unless ISOLATION was requested for this run; files_touched entries MUST be absolute paths. handoff: ≤200 words written FOR THE NEXT SUB-AGENT (the verifier for this task, then the next task\'s implementer) — to make the context immediately at reach for them: absolute paths touched + what changed in each, decisions and why, gotchas, test state, and THE one thing they must know first.',
+     'Execute the task, then return {task_id, status, summary, files_touched[], worktree_path?, test_outcome?, question_for_host?, handoff?}. OMIT worktree_path unless ISOLATION was requested for this run; files_touched entries MUST be absolute paths. handoff: ≤200 words written FOR THE NEXT SUB-AGENT (the verifier for this task, then the next task\'s implementer) — to make the context immediately at reach for them: absolute paths touched + what changed in each, PLUS a look-up hint per touched file (one grep keyword/short string + the changed line range as of your last edit — prefer the keyword if unsure); decisions and why; gotchas; test state; and up to THREE ranked must-know items (1 = most critical).',
      'status "implemented" requires the task work actually done' + (TESTGATE ? ' and the gated tests passing' : '') + '.',
     ].join('\n'),
     { label: 'implement:' + task.id, phase: 'Implement', agentType: 'general-purpose', effort: 'high', model: MODELS.implementer },
@@ -398,7 +398,7 @@ const verifResponse = await agentFB(
      TESTGATE ? 'The gated tests (`' + TESTCOMMAND + '`) MUST be passing for verification to succeed — confirm from the reported outcome and, where feasible, by reading the affected files. Prefer a TASK-SCOPED re-run (the test file beside the touched module) over a full-suite re-run; pipe every run through | tail -50.' : '',
      'WORKING DIRECTORY: verify files under the repo root ' + (REPO_ABS || '(unknown)') + ' — use ABSOLUTE paths and confirm every files_touched entry EXISTS at its absolute path before verifying.',
      'Steps: read the implemented files yourself (never trust the report alone); check the work matches the task description;',
-     'return {task_id, verified, evidence[], marked, handoff?}. evidence[] entries cite ABSOLUTE file:line, command output, or test results. handoff: ≤200 words written FOR THE NEXT SUB-AGENT (the next task\'s implementer — and the verifier re-running this task if it was deferred) — to make the context immediately at reach for them: what you verified and how (file:line anchors), gotchas, open risks, test state, and THE one thing they must know first.',
+     'return {task_id, verified, evidence[], marked, handoff?}. evidence[] entries cite ABSOLUTE file:line, command output, or test results. handoff: ≤200 words written FOR THE NEXT SUB-AGENT (the next task\'s implementer — and the verifier re-running this task if it was deferred) — to make the context immediately at reach for them: what you verified and how (file:line anchors), look-up hints for anything the next agent will need to find (grep keyword/short string first, line range as of your last edit second), gotchas, open risks, test state, and up to THREE ranked must-know items (1 = most critical).',
      'If verification fails, set verified=false, marked=false, and blocker_reason — do NOT mark the checkbox.',
     ].join('\n'),
     { label: 'verify:' + task.id, phase: 'Implement', agentType: 'general-purpose', effort: 'medium', model: MODELS.verifier },
