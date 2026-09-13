@@ -132,7 +132,7 @@ const DIMENSIONS = [
 function reviewerPrompt(dim, snap) {
   return [
     'You are one read-only reviewer dimension in an OpenSpec change validation sweep.',
-    'TOOL ROUTING: prefer ctx_grep/ctx_shell over read/bash for searches and bulk reads — compressed receipts; pipe test runs through | tail -50. Plain read ONLY for small files you must see in full.',
+    'TOOL ROUTING (hard rule): every command via ctx_shell, every content search via ctx_grep, file reads via ctx_read or bounded ranges — NEVER native bash/grep/read for covered operations. Sole exception: the ctx tool returns "not found" — fall back to the native tool and SAY SO in your final report. Pipe test runs through | tail -50.',
     'CHANGE: ' + CHANGE,
     dim.lens,
     '',

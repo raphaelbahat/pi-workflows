@@ -193,8 +193,7 @@ if (MODE === 'apply-ready') {
       if (authored >= cap) break
       const res = await agent(
         [TOOL, CONTRACT, GRILL, '',
-        'Assign artifact: ' + art.id + ' (change "' + CHANGE + '").',
-        'CONTEXT DISCIPLINE: the CLI payloads and the dependency artifacts you read are your sources — cite them; do not re-read unrelated files. TOOL ROUTING: prefer ctx_grep/ctx_read/ctx_shell over read/bash for searches and bulk reads (compressed receipts). If ctx_* tools are not available in this session, FALLBACK to context_search/context_get (the pi-context sidecar); plain read/bash are the last resort.',
+        'CONTEXT DISCIPLINE: the CLI payloads and the dependency artifacts you read are your sources — cite them; do not re-read unrelated files. TOOL ROUTING (hard rule): every command via ctx_shell, every content search via ctx_grep, file reads via ctx_read or bounded ranges — NEVER native bash/grep/read for covered operations. Sole exception: the ctx tool returns "not found" — fall back to the native tool and SAY SO in your final reply.',
          'Intent from the host (may be empty — rely on existing artifacts and the user): ' + (A.intent || '(none provided)'),
          '',
          'Steps:',
@@ -289,7 +288,7 @@ const written = await agent(
     GRILL,
     '',
     'Assign artifact: ' + target.id + ' (change "' + CHANGE + '").',
-    'CONTEXT DISCIPLINE: the CLI payloads and the dependency artifacts you read are your sources — cite them; do not re-read unrelated files. TOOL ROUTING: prefer ctx_grep/ctx_read/ctx_shell over read/bash for searches and bulk reads (compressed receipts). If ctx_* tools are not available in this session, FALLBACK to context_search/context_get (the pi-context sidecar); plain read/bash are the last resort.',
+    'CONTEXT DISCIPLINE: the CLI payloads and the dependency artifacts you read are your sources — cite them; do not re-read unrelated files. TOOL ROUTING (hard rule): every command via ctx_shell, every content search via ctx_grep, file reads via ctx_read or bounded ranges — NEVER native bash/grep/read for covered operations. Sole exception: the ctx tool returns "not found" — fall back to the native tool and SAY SO in your final reply.',
     'Intent from the host (may be empty — rely on existing artifacts and the user): ' + (A.intent || '(none provided)'),
     '',
     'Steps:',

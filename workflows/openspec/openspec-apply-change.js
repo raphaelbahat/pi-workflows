@@ -13,6 +13,7 @@ export const meta = {
 const TOOL = [
   'TOOL DISCIPLINE: issue at most ONE tool call per message; never batch two or more tool calls in a single turn.',
   'If a tool call is rejected as malformed, silently re-issue that ONE call cleanly — AT MOST 3 TIMES. After 3 rejections of the same call, stop retrying and return your best-effort text answer. Never loop on a rejected call. Never restate or quote tool-call markup as text.',
+  'SHELL & SEARCH RULE: run EVERY command with ctx_shell and EVERY content search with ctx_grep — NEVER native bash/grep; read files with ctx_read or bounded ranges, not whole-file read. Sole exception: the ctx tool is not found in this session — then fall back to bash/grep and SAY SO in your final summary. ctx_* return compressed receipts (large token savings); bash/grep dump raw output into your context.',
   'End your run with ONE final answer. If a StructuredOutput tool is available in your session, call it exactly once with the required object; otherwise end with a plain-text answer (raw JSON is fine) and stop. Do not answer in prose when the tool is required.',
 ].join('\n')
 const IMPLEMENTER_CONTRACT = [
@@ -265,7 +266,7 @@ const implResponse = await agent(
     [TOOL, IMPLEMENTER_CONTRACT, '', contextBlock(), '',
      'Assigned task: ' + task.id + ' — ' + task.description,
      'WORKING DIRECTORY: ' + (REPO_ABS || '(unknown — ask the host)') + ' — EVERY file you create or edit MUST use an ABSOLUTE path under that root. Relative paths resolve against a DIFFERENT session cwd and land in the wrong repository (observed failure).',
-     'TOOL ROUTING: prefer ctx_grep/ctx_shell over read/bash for searches and bulk reads — they return compressed receipts. If ctx_* tools are not available in this session, FALLBACK to context_search/context_get (the pi-context sidecar) for the same job; plain read/bash are the last resort. Plain read ONLY for files under ~150 lines you must see in full; pipe test runs through | tail -50. Do NOT re-read design.md — the PRIMER covers it; re-read a section only when the primer is insufficient for your task.',
+     'TOOL ROUTING (hard rule): every command via ctx_shell, every content search via ctx_grep, file reads via ctx_read or bounded ranges — NEVER native bash/grep/read for covered operations. Sole exception: the ctx tool returns "not found" — fall back to the native tool and SAY SO in your final summary. Pipe test runs through | tail -50. Do NOT re-read design.md — the PRIMER covers it; re-read a section only when the primer is insufficient for your task.',
      WORKTREE
        ? 'ISOLATION: create a task-scoped git worktree (e.g. git worktree add ../' + CHANGE + '-' + task.id.replace(/[^a-z0-9]+/gi, '-') + '), do ALL work inside it, NEVER merge into the main tree, and report the worktree path in worktree_path. The host integrates and removes it.'
        : 'ISOLATION: none requested for this run — edit the repository working tree directly.',
