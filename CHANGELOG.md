@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.1](https://github.com/raphaelbahat/pi-workflows/compare/v1.7.0...v1.7.1) (2026-09-13)
+
+
+### Bug Fixes
+
+* SHELL & SEARCH hard rule — every command via ctx_shell, every search via ctx_grep, reads via ctx_read/bounded ranges; bash/grep only on not-found with disclosure (adherence was ~1%: 453 bash vs 3 ctx_shell across campaign children) ([abd89fb](https://github.com/raphaelbahat/pi-workflows/commit/abd89fbf1431671cf787500ecf769bd45fdf92bc))
+
 ## [1.7.0](https://github.com/raphaelbahat/pi-workflows/compare/v1.6.0...v1.7.0) (2026-09-13)
 
 
