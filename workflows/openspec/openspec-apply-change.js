@@ -157,7 +157,7 @@ async function escalate(task, impl, verif) {
      'You are the escalation channel for a blocked OpenSpec apply pipeline (change "' + CHANGE + '").',
      'Call the ask_user_via_host tool EXACTLY ONCE with ALL of these questions batched:',
      JSON.stringify(questions.map(function (q) { return { question: q } })),
-     'Then return the bridge JSON as {status, answers}. Do NOT retry on non-ok statuses; do NOT guess answers.',
+     'Then return the bridge JSON as {status, answers}. status must be the bridge\'s OWN status string, VERBATIM (it is "ok" when the host answered) — never substitute your own interpretation. Do NOT retry on non-ok statuses; do NOT guess answers.',
     ].join('\n'),
     { label: 'escalate:' + task.id, phase: 'Escalate', agentType: 'general-purpose', effort: 'low', model: MODELS.utility },
   )
@@ -274,7 +274,9 @@ const implResponse = await agent(
     if (impl && impl.handoff) handoffLog.push('implementer/' + task.id + ': ' + String(impl.handoff).slice(0, 1200))
     phase('Escalate')
     const esc = await escalate(task, impl, null)
-    if (esc.status === 'ok') {
+    // Answered-bridge normalization (run #2): the bridge may return informative statuses
+    // (e.g. "fix_guidance") alongside real answers — any status carrying answers is actionable.
+    if (esc.status === 'ok' || (esc && Array.isArray(esc.answers) && esc.answers.length > 0)) {
       // True resume (add-pipeline-efficiency D4): the SAME child continues with
       // everything it learned. Engine constraints: no schema/gate/effort/model
       // on a resumed call — the output is TEXT and is routed to the independent
@@ -333,7 +335,7 @@ const verifResponse = await agent(
   if (!verif || verif.verified !== true || verif.marked !== true) {
     phase('Escalate')
     const esc = await escalate(task, impl, verif || null)
-    if (esc.status === 'ok') {
+    if (esc.status === 'ok' || (esc && Array.isArray(esc.answers) && esc.answers.length > 0)) {
       // Host decided: the host's answer may be "it is actually done" (host marks
       // the checkbox itself) or new guidance. Resume verification once.
       const reverifResponse = await agent(
