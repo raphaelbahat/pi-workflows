@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.8.0](https://github.com/raphaelbahat/pi-workflows/compare/v1.7.2...v1.8.0) (2026-09-13)
+
+
+### Features
+
+* add-workflow-model-fallback — agentFB cross-provider fallback chains in all three OpenSpec workflows + secret-free pi --list-models discovery filtering (429 remedy: route to another provider; never reads auth.json/models.json) ([32797e6](https://github.com/raphaelbahat/pi-workflows/commit/32797e62352730893b3224eda0691e663ae907af))
+* analyze-subagent-transcripts.mjs — deterministic transcript diagnostics (tool distribution, token totals, context hogs, loop signatures, ctx_* adoption); live run identified the run-2 loop as 2064x degenerate blocked-snapshot StructuredOutput ([14e2561](https://github.com/raphaelbahat/pi-workflows/commit/14e2561055f614b89d1ea3c4da19f0410272df01))
+* handoff prompts written FOR THE NEXT SUB-AGENT — name the next role (verifier/next implementer), require paths+decisions+gotchas+test-state+the-one-thing (context at reach, per review) ([af8e29a](https://github.com/raphaelbahat/pi-workflows/commit/af8e29ac279915ca71823230f113f8b4bd838b1f))
+
 ## [1.7.2](https://github.com/raphaelbahat/pi-workflows/compare/v1.7.1...v1.7.2) (2026-09-13)
 
 
