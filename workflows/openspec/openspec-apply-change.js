@@ -124,6 +124,10 @@ const STORE = A.store ? ' --store ' + A.store : ''
 const WORKTREE = A.worktree === true
 const TESTGATE = A.testGate === true
   const TESTCOMMAND = A.testCommand || null
+  // Unanswered-escalation policy (host-configurable): 'defer' skips the task and lists it for the host;
+  // 'fix' grants ONE bounded self-guided fix round (implementer resumes with best judgment, then a fresh verifier re-gates).
+  const UNANSWERED = String(A.onUnansweredEscalation || 'defer').toLowerCase() === 'fix' ? 'fix' : 'defer'
+  const selfFixRounds = {} // per-task self-guided fix counter — hard bound: one round per task
 
   // Model tiers (add-pipeline-efficiency D1): flash defaults, host-overridable per run.
   const MODELS = {
@@ -231,21 +235,29 @@ if (snap.state === 'blocked' && (snap.missing_artifacts || []).length > 0) { // 
 // --- Phase: Implement -------------------------------------------------------
 phase('Implement')
 let guard = 0
+const skippedTasks = [] // deferred tasks: escalation went unanswered — the host completes them after the run
+let nullStatus = 0
 const MAX_ITERATIONS = (snap.progress.total || 0) + 4 // every task + re-queries; hard runaway backstop
 while (guard++ < MAX_ITERATIONS) {
   // Re-query per dispatch: the CLI checkbox progress is authoritative (D4).
   const s = guard === 1 ? snap : parseAgentJson(await agent(
-    [TOOL, 'Re-run: ' + ROOT + 'openspec instructions apply --change "' + CHANGE + '" --json' + STORE + ' — return the snapshot only (state, progress, tasks[]). Map the payload\'s "state" field VERBATIM ("ready" when progress.remaining > 0; "all_done" when none; "blocked" only if the payload itself says so). Do NOT implement anything.'].join('\n'),
+    [TOOL, 'Re-run: ' + ROOT + 'openspec instructions apply --change "' + CHANGE + '" --json' + STORE + ' — run the command, then reply with EXACTLY its JSON output VERBATIM inside a ```json fenced block and NOTHING else — no prose, no summary. Do NOT implement anything.'].join('\n'),
     { label: 'status:' + CHANGE + ':' + guard, phase: 'Implement', agentType: 'general-purpose', effort: 'minimal' },
   ), null)
   if (!s) {
-    return { change: CHANGE, error: 'status-failed', progress: snap.progress, note: 'status agent returned null — re-run resumes idempotently (checkboxes are the state)' }
+    nullStatus++
+    if (nullStatus >= 3) {
+      return { change: CHANGE, error: 'status-failed', progress: snap.progress, note: 'status agent returned null 3x consecutively — re-run resumes idempotently (checkboxes are the state)' }
+    }
+    log('status query returned null (' + nullStatus + '/3) — retrying')
+    continue
   }
+  nullStatus = 0
   if (s.state === 'blocked' && (s.missing_artifacts || []).length > 0) { // blocked requires missingArtifacts per the documented shape — an agent misread otherwise
     return { change: CHANGE, error: 'blocked', missing_artifacts: s.missing_artifacts || [], progress: s.progress, next: 'host-complete-planning' }
   }
-  const task = (s.tasks || []).find(function (t) { return !t.done })
-  if (!task) break // every task complete and verified — Report
+  const task = (s.tasks || []).find(function (t) { return !t.done && skippedTasks.indexOf(t.id) === -1 })
+  if (!task) break // every task complete and verified (or deferred) — Report
   log('Task ' + task.id + ': dispatching implementer')
 
   // Implementer (effort high). Distinct from the verifier by design (ADR-0002).
@@ -297,20 +309,40 @@ const implResponse = await agent(
         { label: 'implement:' + task.id, resume: 'implement:' + task.id, phase: 'Implement' },
       )
       if (!retry) {
-        return {
-          change: CHANGE, error: 'blocker-unresolved', blocked_task: task.id,
-          needs_input: { task: task.id, escalation: esc, note: 'The resumed implementer returned nothing. No checkbox was marked.' },
-          progress: s.progress, next: 'host-decide-then-resume',
-        }
+        skippedTasks.push(task.id)
+        log('Task ' + task.id + ' DEFERRED (host answered but the resumed implementer returned nothing) — continuing')
+        phase('Implement')
+        continue
       }
       impl = { task_id: task.id, status: 'implemented', summary: String(retry).slice(0, 600), files_touched: [], handoff: '' }
       phase('Implement')
-    } else {
-      return {
-        change: CHANGE, error: 'escalation-failed', blocked_task: task.id,
-        needs_input: { task: task.id, escalation: esc, note: 'No checkbox was marked for the blocked task; the host decides, then re-invokes (checkboxes are the state, so nothing is lost).' },
-        progress: s.progress, next: 'host-decide-then-resume',
+    } else if (UNANSWERED === 'fix') {
+      log('Task ' + task.id + ': escalation unanswered — self-guided fix attempt (onUnansweredEscalation=fix)')
+      const selffix = await agent(
+        [IMPLEMENTER_CONTRACT,
+         'Assigned task: ' + task.id + ' — ' + task.description,
+         'WORKING DIRECTORY: ' + (REPO_ABS || '(unknown)') + ' — absolute paths only, as before.',
+         'The escalation went UNANSWERED — no host guidance is available. Resolve the blocker yourself using your best judgment:',
+         '- stay strictly within the task scope; do NOT touch specs or tasks.md;',
+         '- make conservative choices that satisfy the task description and the design constraints in the PRIMER;',
+         TESTGATE ? '- TEST GATE: `' + TESTCOMMAND + '` must pass before reporting implemented.' : '- TEST GATE: not enabled.',
+         '',
+         'Finish the task now. Then reply with a SHORT TEXT summary: status, files touched (absolute paths), test outcome. Do NOT call StructuredOutput.',
+        ].join('\n'),
+        { label: 'implement:' + task.id, resume: 'implement:' + task.id, phase: 'Implement' },
+      )
+      if (!selffix) {
+        skippedTasks.push(task.id)
+        log('Task ' + task.id + ' DEFERRED (self-guided fix returned nothing) — continuing')
+        phase('Implement')
+        continue
       }
+      impl = { task_id: task.id, status: 'implemented', summary: String(selffix).slice(0, 600), files_touched: [], handoff: '' }
+      phase('Implement')
+    } else {
+      skippedTasks.push(task.id)
+      log('Task ' + task.id + ' DEFERRED (escalation unanswered) — continuing with remaining tasks')
+      continue
     }
   }
 
@@ -320,9 +352,6 @@ const verifResponse = await agent(
      'Verify task ' + task.id + ' — ' + task.description,
      'The implementer reported: ' + JSON.stringify({ summary: impl.summary, files_touched: impl.files_touched, test_outcome: impl.test_outcome }),
      'READ DISCIPLINE (token economy): verify with GREP-ANCHORED reads, not whole files. First `ctx_grep` the changed symbols/regions (with context lines) in the files_touched entries; then read ONLY the specific line ranges you still need (read with offset/limit, or a bounded sed range via ctx_shell). Full-file reads ONLY for files under ~150 lines. Never re-read an entire large file that grep already anchored.',
-     'Verify task ' + task.id + ' — ' + task.description,
-     'The implementer reported: ' + JSON.stringify({ summary: impl.summary, files_touched: impl.files_touched, test_outcome: impl.test_outcome }),
-     'TOOL ROUTING: prefer ctx_grep/ctx_shell over read/bash for searches — compressed receipts. Use ctx_expand for prior large outputs instead of re-reading files. If ctx_* tools are not available in this session, FALLBACK to context_search/context_get (the pi-context sidecar) for the same job; plain read/bash are the last resort.',
      TESTGATE ? 'The gated tests (`' + TESTCOMMAND + '`) MUST be passing for verification to succeed — confirm from the reported outcome and, where feasible, by reading the affected files. Prefer a TASK-SCOPED re-run (the test file beside the touched module) over a full-suite re-run; pipe every run through | tail -50.' : '',
      'WORKING DIRECTORY: verify files under the repo root ' + (REPO_ABS || '(unknown)') + ' — use ABSOLUTE paths and confirm every files_touched entry EXISTS at its absolute path before verifying.',
      'Steps: read the implemented files yourself (never trust the report alone); check the work matches the task description;',
@@ -351,31 +380,64 @@ const verifResponse = await agent(
       )
       const reverif = parseAgentJson(reverifResponse, { task_id: task.id, verified: false, marked: false, evidence: ['Unparseable resumed verifier response: ' + String(reverifResponse || 'empty')] })
       if (!reverif || reverif.verified !== true || reverif.marked !== true) {
-        return {
-          change: CHANGE, error: 'verification-unresolved', blocked_task: task.id,
-          needs_input: { task: task.id, escalation: esc, note: 'Verification still fails after the host answered. No checkbox was marked.' },
-          progress: s.progress, next: 'host-decide-then-resume',
-        }
+        skippedTasks.push(task.id)
+        log('Task ' + task.id + ' DEFERRED (verification still fails after host answer) — continuing')
+        phase('Implement')
+        continue
       }
       log('Task ' + task.id + ' verified after host decision')
       phase('Implement')
-    } else {
-      return {
-        change: CHANGE, error: 'escalation-failed', blocked_task: task.id,
-        needs_input: { task: task.id, escalation: esc, note: 'No checkbox was marked for the blocked task; the host decides, then re-invokes.' },
-        progress: s.progress, next: 'host-decide-then-resume',
+    } else if (UNANSWERED === 'fix' && !(selfFixRounds[task.id] >= 1)) {
+      selfFixRounds[task.id] = 1
+      log('Task ' + task.id + ': verification escalation unanswered — ONE self-guided fix round (onUnansweredEscalation=fix)')
+      const fixResponse = await agent(
+        [IMPLEMENTER_CONTRACT,
+         'Assigned task: ' + task.id + ' — ' + task.description,
+         'WORKING DIRECTORY: ' + (REPO_ABS || '(unknown)') + ' — absolute paths only.',
+         'The verifier REJECTED the implementation and the escalation went UNANSWERED. Fix the noted problems yourself:',
+         JSON.stringify({ blocker_reason: (verif && verif.blocker_reason) || null, evidence: (verif && verif.evidence) || [] }),
+         '- stay strictly within the task scope; do NOT touch specs or tasks.md;',
+         TESTGATE ? '- TEST GATE: `' + TESTCOMMAND + '` must pass before reporting done.' : '- TEST GATE: not enabled.',
+         '',
+         'Finish now. Then reply with a SHORT TEXT summary of what you changed. Do NOT call StructuredOutput.',
+        ].join('\n'),
+        { label: 'implement:' + task.id, resume: 'implement:' + task.id, phase: 'Implement' },
+      )
+      impl = { task_id: task.id, status: 'implemented', summary: String(fixResponse || '').slice(0, 600), files_touched: [], handoff: '' }
+      const reverifResponse = await agent(
+        [TOOL, VERIFIER_CONTRACT, '',
+         'Re-verify task ' + task.id + ' — ' + task.description,
+         'The implementer applied ONE self-guided fix: ' + JSON.stringify({ summary: impl.summary }),
+         'Re-verify strictly per your contract. Mark the checkbox ONLY if the work now genuinely satisfies the task.',
+         'Return {task_id, verified, evidence[], marked}.',
+        ].join('\n'),
+        { label: 'verify:' + task.id + ':selffix', phase: 'Implement', agentType: 'general-purpose', effort: 'medium', model: MODELS.verifier },
+      )
+      const reverif = parseAgentJson(reverifResponse, { task_id: task.id, verified: false, marked: false, evidence: ['Unparseable self-fix verifier response: ' + String(reverifResponse || 'empty')] })
+      if (reverif && reverif.verified === true && reverif.marked === true) {
+        log('Task ' + task.id + ' verified after self-guided fix')
+        phase('Implement')
+      } else {
+        skippedTasks.push(task.id)
+        log('Task ' + task.id + ' DEFERRED (still unverified after self-guided fix) — continuing')
+        phase('Implement')
+        continue
       }
+    } else {
+      skippedTasks.push(task.id)
+      log('Task ' + task.id + ' DEFERRED (verification escalation unanswered) — continuing with remaining tasks')
+      continue
     }
   } else {
     log('Task ' + task.id + ' verified + marked (' + (s.progress.complete + 1) + '/' + s.progress.total + ')')
-  if (verif && verif.handoff) handoffLog.push('verifier/' + task.id + ': ' + String(verif.handoff).slice(0, 1200))
+    if (verif && verif.handoff) handoffLog.push('verifier/' + task.id + ': ' + String(verif.handoff).slice(0, 1200))
   }
 }
 
 // --- Phase: Report ----------------------------------------------------------
 phase('Report')
 const finalRaw = await agent(
-  [TOOL, 'Final apply state: ' + ROOT + 'openspec instructions apply --change "' + CHANGE + '" --json' + STORE + ' — return the snapshot only. Do NOT implement anything.'].join('\n'),
+  [TOOL, 'Final apply state: ' + ROOT + 'openspec instructions apply --change "' + CHANGE + '" --json' + STORE + ' — run the command, then reply with EXACTLY its JSON output VERBATIM inside a ```json fenced block and NOTHING else — no prose, no summary. Do NOT implement anything.'].join('\n'),
   { label: 'final:' + CHANGE, phase: 'Report', agentType: 'general-purpose', effort: 'minimal' },
 )
 const final = parseAgentJson(finalRaw, null)
@@ -384,9 +446,10 @@ return {
   state: final ? final.state : 'unknown',
   tasks_done: final ? final.progress.complete : snap.progress.complete,
   tasks_total: final ? final.progress.total : snap.progress.total,
+  skipped_tasks: skippedTasks,
   worktrees,
-  needs_input: null,
-  blocked_task: null,
-  next: 'host-review-then-archive-in-main-session',
-  note: 'All tasks implemented and verified. openspec archive (with its inline delta-spec sync) and openspec update remain main-session-only — the host runs them after review.',
+  needs_input: skippedTasks.length ? { deferred_tasks: skippedTasks, note: 'Escalations went unanswered for these tasks — the host completes, verifies, and marks them in the main session before archive.' } : null,
+  blocked_task: skippedTasks.length ? skippedTasks[0] : null,
+  next: skippedTasks.length ? 'host-complete-skipped-tasks-then-archive' : 'host-review-then-archive-in-main-session',
+  note: 'All actionable tasks implemented and verified; deferred tasks are listed in skipped_tasks. openspec archive (with its inline delta-spec sync) and openspec update remain main-session-only — the host runs them after review.',
 }

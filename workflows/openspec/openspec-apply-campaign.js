@@ -1,7 +1,7 @@
 export const meta = {
   name: 'openspec-apply-campaign',
   description:
-    'Serially implement ALL unimplemented OpenSpec changes in the host-provided dependency order: per change, run openspec-apply-change (idempotent — checkboxes are the state); fail-soft per change (one blocked change does not stop the campaign). No commits, no archive — the host reviews, commits, and archives after the digest.',
+    'Serially implement ALL unimplemented OpenSpec changes in the host-provided dependency order: per change, run openspec-apply-change (idempotent — checkboxes are the state); fail-soft per change (one blocked change does not stop the campaign). onUnansweredEscalation: defer (skip + list for host) | fix (ONE bounded self-guided fix round, fresh verifier re-gates). No commits, no archive — the host reviews, commits, and archives after the digest.',
   phases: [
     { title: 'Implement', detail: 'serial openspec-apply-change runs, dependency order, fail-soft' },
     { title: 'Digest', detail: 'per-change outcomes + host-only next steps' },
@@ -23,7 +23,7 @@ for (let i = 0; i < ORDER.length; i++) {
   log('[' + (i + 1) + '/' + ORDER.length + '] applying: ' + change)
   let r = null
   try {
-    r = await workflow('openspec-apply-change', { change: change, repoRoot: REPO })
+    r = await workflow('openspec-apply-change', { change: change, repoRoot: REPO, onUnansweredEscalation: A.onUnansweredEscalation || 'defer' })
   } catch (e) {
     r = { change: change, error: 'workflow-threw', note: String((e && e.message) || e) }
   }
