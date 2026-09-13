@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.5.4](https://github.com/raphaelbahat/pi-workflows/compare/v1.5.3...v1.5.4) (2026-09-13)
+
+
+### Bug Fixes
+
+* escalation answers-normalization — any bridge status carrying answers is actionable (run [#2](https://github.com/raphaelbahat/pi-workflows/issues/2): 'fix_guidance' with answers was treated as failure); escalate prompt pins bridge status verbatim ([ba9af8b](https://github.com/raphaelbahat/pi-workflows/commit/ba9af8b6653756f0d0726fd17d1e56f899617a0b))
+* QA pattern for ALL schema'd classes (status/final/load/escalate → text+parseAgentJson); 3-strike malformed-call cap; restored primer prompt body — kills the StructuredOutput loop class (run [#2](https://github.com/raphaelbahat/pi-workflows/issues/2): 2292-call loop on glm-5.3-flash) ([f95bf4f](https://github.com/raphaelbahat/pi-workflows/commit/f95bf4f30e892e37ac53dacc5689603798d258e5))
+* task-scoped test discipline (scoped-first via ctx_shell, full suite once) + grep-anchored verifier reads (whole-file reads only &lt;150 lines) — top post-loop token burners ([2184780](https://github.com/raphaelbahat/pi-workflows/commit/2184780b40a265ab721ab346f136b96245946b26))
+
 ## [1.5.3](https://github.com/raphaelbahat/pi-workflows/compare/v1.5.2...v1.5.3) (2026-09-12)
 
 
