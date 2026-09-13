@@ -253,12 +253,13 @@ const implResponse = await agent(
     [TOOL, IMPLEMENTER_CONTRACT, '', contextBlock(), '',
      'Assigned task: ' + task.id + ' — ' + task.description,
      'WORKING DIRECTORY: ' + (REPO_ABS || '(unknown — ask the host)') + ' — EVERY file you create or edit MUST use an ABSOLUTE path under that root. Relative paths resolve against a DIFFERENT session cwd and land in the wrong repository (observed failure).',
-     'TOOL ROUTING: prefer ctx_grep/ctx_read/ctx_shell over read/bash for searches and bulk reads — they return compressed receipts. If ctx_* tools are not available in this session, FALLBACK to context_search/context_get (the pi-context sidecar) for the same job; plain read/bash are the last resort. Plain read ONLY for small files you must see in full; pipe test runs through | tail -50. Do NOT re-read design.md — the PRIMER covers it; re-read a section only when the primer is insufficient for your task.',
+     'TOOL ROUTING: prefer ctx_grep/ctx_shell over read/bash for searches and bulk reads — they return compressed receipts. If ctx_* tools are not available in this session, FALLBACK to context_search/context_get (the pi-context sidecar) for the same job; plain read/bash are the last resort. Plain read ONLY for files under ~150 lines you must see in full; pipe test runs through | tail -50. Do NOT re-read design.md — the PRIMER covers it; re-read a section only when the primer is insufficient for your task.',
      WORKTREE
        ? 'ISOLATION: create a task-scoped git worktree (e.g. git worktree add ../' + CHANGE + '-' + task.id.replace(/[^a-z0-9]+/gi, '-') + '), do ALL work inside it, NEVER merge into the main tree, and report the worktree path in worktree_path. The host integrates and removes it.'
        : 'ISOLATION: none requested for this run — edit the repository working tree directly.',
+     'TEST DISCIPLINE (token economy): run TASK-SCOPED tests first via ctx_shell — derive the test file(s) from the files this task touches (e.g. the .test.ts beside the module you edit) and run `ctx_shell bun test <that file>`; only if that passes AND the task touches shared wiring (index/entry/gate modules) run the FULL suite ONCE (`ctx_shell " + TESTCOMMAND + " | tail -20`). Never re-run the full suite repeatedly inside one task; pipe every test run through | tail -50.',
      TESTGATE
-       ? 'TEST GATE: run `' + TESTCOMMAND + '`. A failing outcome means you report status "paused" with test_outcome describing the failure — a non-passing gate can never be reported as implemented.'
+       ? 'TEST GATE: the gated suite (`' + TESTCOMMAND + '`) must pass before you report implemented — one full-suite run at the end of your task is enough if your scoped runs already passed.'
        : 'TEST GATE: not enabled for this run.',
      '',
      'Execute the task, then return {task_id, status, summary, files_touched[], worktree_path?, test_outcome?, question_for_host?, handoff?}. OMIT worktree_path unless ISOLATION was requested for this run; files_touched entries MUST be absolute paths. handoff: ≤200 words for the NEXT agent — what you did, key facts, gotchas, next-task hints.',
@@ -316,11 +317,13 @@ const verifResponse = await agent(
     [TOOL, VERIFIER_CONTRACT, '', contextBlock(), '',
      'Verify task ' + task.id + ' — ' + task.description,
      'The implementer reported: ' + JSON.stringify({ summary: impl.summary, files_touched: impl.files_touched, test_outcome: impl.test_outcome }),
-     'TOOL ROUTING: prefer ctx_grep/ctx_read/ctx_shell over read/bash for searches and bulk reads — compressed receipts, full output stays in the local sidecar. Use ctx_expand for prior large outputs instead of re-reading files. If ctx_* tools are not available in this session, FALLBACK to context_search/context_get (the pi-context sidecar) for the same job; plain read/bash are the last resort. Plain read ONLY for small files you must see in full.',
-     TESTGATE ? 'The gated tests (`' + TESTCOMMAND + '`) MUST be passing for verification to succeed — confirm from the reported outcome and, where feasible, by reading the affected files.' : '',
+     'READ DISCIPLINE (token economy): verify with GREP-ANCHORED reads, not whole files. First `ctx_grep` the changed symbols/regions (with context lines) in the files_touched entries; then read ONLY the specific line ranges you still need (read with offset/limit, or a bounded sed range via ctx_shell). Full-file reads ONLY for files under ~150 lines. Never re-read an entire large file that grep already anchored.',
+     'Verify task ' + task.id + ' — ' + task.description,
+     'The implementer reported: ' + JSON.stringify({ summary: impl.summary, files_touched: impl.files_touched, test_outcome: impl.test_outcome }),
+     'TOOL ROUTING: prefer ctx_grep/ctx_shell over read/bash for searches — compressed receipts. Use ctx_expand for prior large outputs instead of re-reading files. If ctx_* tools are not available in this session, FALLBACK to context_search/context_get (the pi-context sidecar) for the same job; plain read/bash are the last resort.',
+     TESTGATE ? 'The gated tests (`' + TESTCOMMAND + '`) MUST be passing for verification to succeed — confirm from the reported outcome and, where feasible, by reading the affected files. Prefer a TASK-SCOPED re-run (the test file beside the touched module) over a full-suite re-run; pipe every run through | tail -50.' : '',
      'WORKING DIRECTORY: verify files under the repo root ' + (REPO_ABS || '(unknown)') + ' — use ABSOLUTE paths and confirm every files_touched entry EXISTS at its absolute path before verifying.',
      'Steps: read the implemented files yourself (never trust the report alone); check the work matches the task description;',
-     'if verified, edit tasks.md (change dir: ' + (s.change_dir || 'openspec/changes/' + CHANGE + ')') + ' marking THIS task checkbox from `[ ]` to `[x]` — no other edit;',
      'return {task_id, verified, evidence[], marked, handoff?}. evidence[] entries cite ABSOLUTE file:line, command output, or test results. handoff: ≤200 words for the NEXT agent — what was verified, gotchas, next-task hints.',
      'If verification fails, set verified=false, marked=false, and blocker_reason — do NOT mark the checkbox.',
     ].join('\n'),
