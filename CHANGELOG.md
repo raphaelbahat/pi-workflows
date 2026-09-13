@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.0](https://github.com/raphaelbahat/pi-workflows/compare/v1.8.0...v1.9.0) (2026-09-13)
+
+
+### Features
+
+* handoff look-up hints (per-file grep keyword + changed line range, keyword preferred) + up-to-three ranked must-know items (1 = most critical); &lt;=200 kept — context-at-reach for the next implementer/verifier sub-agent ([49c92ed](https://github.com/raphaelbahat/pi-workflows/commit/49c92edb018b3ef5245faeb3477812c2979f9d82))
+
 ## [1.8.0](https://github.com/raphaelbahat/pi-workflows/compare/v1.7.2...v1.8.0) (2026-09-13)
 
 
