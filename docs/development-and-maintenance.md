@@ -7,7 +7,12 @@ CI, scripts, distribution mechanics, and operational notes. Related:
 
 ## Distribution (Skillshare extras)
 
-- **Edit at source only** (`~/pi-workflows`), then `skillshare sync extras --force` — targets are
+
+- **Tracked install (recommended for consumers):** `skillshare install raphaelbahat/pi-workflows --track`
+  preserves the repo's `.git`, so `skillshare update pi-workflows` later pulls the latest workflows via
+  git in one command (see the README's Quick Setup for both installation paths).
+- **Valid distribution targets:** `.pi/workflows/`, `.agents/workflows/`, or `<agent dir>/workflows/` —
+  any directory the pi-subagents resolver scans works; pick the one your setup already uses.- **Edit at source only** (`~/pi-workflows`), then `skillshare sync extras --force` — targets are
   managed **copies** (mode=copy) that go stale after source edits; plain sync SKIPS conflicting
   files in copy mode, so `--force` is the standard re-sync. `skillshare extras list` shows drift,
   `skillshare diff` covers extras. Never edit synced files inside a project.

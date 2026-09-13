@@ -4,27 +4,15 @@ The OpenSpec inventory of this repo. Related: [Development and
 Maintenance](development-and-maintenance.md) (how changes are authored/validated) and
 [Workflows — OpenSpec group](workflows/openspec-workflows.md) (the engine that drives them).
 
-## ADRs (`docs/adr/`)
+The authoritative inventories live in these directories — list them for the current state;
+this page intentionally hardcodes nothing:
 
-- **ADR-0001** — Workflow family with a checkpoint-bridge user-interaction channel for OpenSpec
-  integration (pi.events proved session-scoped; the bridge relays over a process-global bus).
-- **ADR-0002** — Apply pipelines separate implementation from verification and stop hard on the
-  first blocker (the implementer never marks its own checkbox).
-- **ADR-0003** — Cross-provider model fallback and a configurable unanswered-escalation policy
-  (`agentFB` chains + `onUnansweredEscalation: defer | fix`).
+- **ADRs**: [`docs/adr/`](../adr) — architecture decisions, oldest first by number.
+- **Capability specs**: [`openspec/specs/`](../../openspec/specs) — one directory per capability.
+- **Changes**: [`openspec/changes/`](../../openspec/changes) — active changes (plus
+  [`openspec/changes/archive/`](../../openspec/changes/archive) for completed ones; each change
+  directory carries its own `proposal`, `specs`, `design`, `adr`, `tasks`, and `validate`).
 
-## Capability specs (`openspec/specs/`)
-
-- `apply-pipeline` — the per-task implement/verify pipeline contract.
-- `campaign-orchestrator` — serial scaffolds + one-level plan fan-out.
-- `pipeline-efficiency` — model tiers, context primer, rolling handoffs, true-resume.
-- `plan-apply-ready-mode` — the apply-ready authoring loop.
-
-## Changes
-
-- **Active**: `add-workflow-model-fallback` (implemented 2026-09-13; strict-valid; see ADR-0003).
-- **Archived** (`openspec/changes/archive/`): `add-openspec-apply-pipeline`,
-  `add-openspec-campaign-orchestrator`, `add-pipeline-efficiency`.
-
-Archive policy: `openspec archive` / `openspec update` are main-session-only — the host runs
-them after review; workflow agents never archive.
+Related: [Development and Maintenance](development-and-maintenance.md): how changes are
+authored/validated · [Workflows — OpenSpec group](workflows/openspec-workflows.md): the engine
+that drives them.

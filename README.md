@@ -25,20 +25,28 @@ workflows in two groups:
 
 Two paths:
 
-**Tracked (recommended)** — one-command updates via Skillshare:
+#### Tracked
+
+**Recommended** — one-command updates via Skillshare:
 
 ```bash
 skillshare install raphaelbahat/pi-workflows --track   # preserves .git for updates
-skillshare update pi-workflows                        # later updates: git pull via skillshare
+
+# Later updates: git pulls via skillshare
+# skillshare update pi-workflows
 ```
 
-Evidence (from `skillshare install --help`): `--track, -t  Install as tracked repo (preserves .git for updates)`; and `skillshare update --help`: "For tracked repos (_repo-name): runs git pull". The repo's `.git` is kept, so `skillshare update <name>` pulls the latest workflows with a single command.
+#### Untracked
 
-**Untracked (git clone)** — manual updates:
+**Git clone with manual updates**:
 
 ```bash
-git clone https://github.com/raphaelbahat/pi-workflows ~/pi-workflows   # updates: git pull in the clone
+git clone https://github.com/raphaelbahat/pi-workflows ~/pi-workflows
+
+# Later updates: git pull in the clone
+# cd ~/pi-workflows && git pull
 ```
+
 ### Distribution
 
 Register your project as a distribution target (both extras, same target — point the extras at the tracked clone or your git-clone location):
@@ -49,31 +57,46 @@ Register your project as a distribution target (both extras, same target — poi
     skillshare sync extras -g --force
     ```
 
-Verify: from the project, ask the model to run a workflow by name, or invoke by path (below).
+### Update
+
+#### Tracked
+
+```bash
+# Tracked: one-command updates via Skillshare
+skillshare update pi-workflows
+```
+
+#### Untracked
+
+```bash
+# Untracked: manual updates via git
+cd ~/pi-workflows && git pull
+```
+
+> [!TIP]
+> Verify: from the project, ask the model to run a workflow by name, or invoke by path (below).
 
 > [!NOTE]
-> Along with `.pi/workflows/`, both `.agents/workflows/` and `<agent dir>/workflows/` are also valid distribution targets — any directory the pi-subagents resolver scans works; pick the one your setup already uses.
+> Along with `.pi/workflows/`, both `.agents/workflows/` and `<agent dir>/workflows/` are also valid distribution targets — any directory the `pi-subagents` resolver scans works; pick the one your setup already uses.
 
 For further distribution documentation, copy-vs-symlink gotchas, and target retirement, refer to [Development and Maintenance](docs/development-and-maintenance.md).
 
-### Interactive (run by name)
+### Interactive
+
+**Run by name from inside Pi**.
 
 Inside a project with `.pi/workflows/` populated by the skillshare extras, just ask the model:
 _"run the pi-plugin-eval workflow with args {…}"_. The resolver matches the saved workflow by name.
 
-### Headless (run by path/CLI)
+### Headless
 
-Invoke by path from anywhere, including headless runs:
+Invoke via CLI by path from anywhere, including headless runs:
 
 ```bash
 pi -p --subagents-workflow-file="$HOME/pi-workflows/workflows/pi-plugin/pi-plugin-eval.js"   # use the = form
 ```
 
-```bash
-```
-
-`args` may be passed as a JSON object or a JSON-encoded string (both handled). Each workflow's
-args contract is documented in its group doc under [Workflows](#workflows).
+Arguments may be passed via the `args` argument — as a JSON object or a JSON-encoded string (both handled). Each workflow's args contract is documented in its group doc under [Workflows](#workflows).
 
 ## Workflows
 
@@ -119,5 +142,3 @@ operational notes, and known pi-subagents quirks — lives in
   and known pi-subagents quirks. References the [OpenSpec Index](docs/openspec-index.md).
 - **[OpenSpec Index](docs/openspec-index.md)** — ADRs (0001–0003), capability specs, and the
   archived/active change inventory, with the archive policy.
-- **[Validation History](docs/validation-history.md)** — measured pilots and production runs
-  with token accounting, from the 2026-09-02 genericization to today.

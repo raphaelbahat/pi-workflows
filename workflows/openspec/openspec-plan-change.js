@@ -91,13 +91,37 @@ const QA_SCHEMA = {
 const A = (typeof args === 'string') ? JSON.parse(args) : (args || {})
 const CHANGE = A.change
 const MODE = A.mode || 'one'
+const RETRY_PAUSE_MS = (A.retryPauseMs == null ? 45000 : Math.max(0, Number(A.retryPauseMs) || 0))
+// add-fallback-retry-pause: ONE bounded pause (gate-sleep trick — deterministic, no jitter/Date.now),
+// then ONE primary retry, before the cross-provider chain. Best-effort: a failed pause child never blocks.
+async function pauseOnce(ms, label) {
+  if (!ms || ms <= 0) return
+  log('retry pause: ' + ms + 'ms before retrying/fallback (429 remedy: retry shortly) — ' + (label || 'agentFB'))
+  try {
+    await agent('Reply with exactly: paused. Do not use any tools.', {
+      label: 'retry-pause:' + (label || 'agentFB'),
+      agentType: 'general-purpose',
+      effort: 'minimal',
+      model: (typeof MODELS !== 'undefined' && MODELS.utility) || 'qwen/qwen3.8-flash',
+      gate: 'sleep ' + Math.ceil(ms / 1000) + ' && true',
+    })
+  } catch (e) { /* best-effort: a failed pause child never blocks */ }
+}
 async function agentFB(prompt, opts) {
   const r = await agent(prompt, opts)
   if (r !== null && r !== undefined) return r
   const primary = (opts && opts.model) || null
   const chain = chainFor(primary)
   if (!chain.length) return r
-  log('fallback hop: agent "' + ((opts && opts.label) || '') + '" returned null on ' + (primary || 'the default model') + ' (terminal provider error, e.g. 429 shared-pool rate limit) — retrying on: ' + chain[0])
+  if (RETRY_PAUSE_MS > 0) {
+    // add-fallback-retry-pause: cover the 429 "retry shortly" window, then ONE primary retry.
+    await pauseOnce(RETRY_PAUSE_MS, (opts && opts.label) || '')
+    const rp = await agent(prompt, opts)
+    if (rp !== null && rp !== undefined) return rp
+    log('primary retry after the pause still failed — proceeding to the fallback chain')
+  } else {
+    log('fallback hop: agent "' + ((opts && opts.label) || '') + '" returned null on ' + (primary || 'the default model') + ' (terminal provider error, e.g. 429 shared-pool rate limit) — retrying on: ' + chain[0])
+  }
   for (let i = 0; i < chain.length; i++) {
     const fb = Object.assign({}, opts, { model: chain[i] })
     delete fb.resume

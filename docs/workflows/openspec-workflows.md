@@ -146,6 +146,13 @@ shared-pool `429`), the SAME call is retried down the chain, each hop logged as
 `fallback hop: agent "<label>" returned null on <model> — retrying on: <next>`. Fallback hops
 drop `resume`/`gate` (fresh child; prompts are self-contained by construction).
 
+
+**Retry pause (ADR-0004, `add-fallback-retry-pause`)**: before the first fallback hop,
+`agentFB` spends ONE bounded pause — a minimal utility-model "pause child" whose `gate` runs
+`sleep <seconds> && true` (`args.retryPauseMs`, default `45000`, `0` disables; deterministic,
+no jitter) — then retries the PRIMARY exactly once, and only then enters the chain. Best-effort:
+a failed pause child never blocks; log line: `retry pause: <ms>ms before retrying/fallback`.
+
 Run-time discovery (secret-free): the apply Load child runs `pi --list-models` and returns the
 configured provider/model table as snapshot field `authenticated_models`; `agentFB` filters
 chains to that list. NEVER `auth.json`/`models.json` — they contain user secrets. The
