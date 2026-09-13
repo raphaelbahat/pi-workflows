@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.2](https://github.com/raphaelbahat/pi-workflows/compare/v1.7.1...v1.7.2) (2026-09-13)
+
+
+### Bug Fixes
+
+* CTX TIMING NOTE — a not-found ctx_* tool may be pre-registration (lean-ctx bridge connects async); children retry after a few turns (confirmed: campaign child ctx_grep isError 'Tool ctx_grep not found' on first search, 0 extension-errors) ([7737bb4](https://github.com/raphaelbahat/pi-workflows/commit/7737bb4d3039ef4999db53095378d217b27a7b3d))
+
 ## [1.7.1](https://github.com/raphaelbahat/pi-workflows/compare/v1.7.0...v1.7.1) (2026-09-13)
 
 
