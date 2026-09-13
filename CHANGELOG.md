@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/raphaelbahat/pi-workflows/compare/v1.6.0...v1.7.0) (2026-09-13)
+
+
+### Features
+
+* configurable onUnansweredEscalation (defer | fix) — fix mode grants ONE bounded self-guided fix round per task (implementer resumes with best judgment, fresh verifier re-gates); campaign forwards the policy ([c7db629](https://github.com/raphaelbahat/pi-workflows/commit/c7db629a919a010f7c400e8f155d392436d4c726))
+
 ## [1.6.0](https://github.com/raphaelbahat/pi-workflows/compare/v1.5.4...v1.6.0) (2026-09-13)
 
 
