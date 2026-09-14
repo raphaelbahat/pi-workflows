@@ -20,7 +20,8 @@ CI, scripts, distribution mechanics, and operational notes. Related:
   target list), then `skillshare sync extras -g --force`. See the README's Distribution section
   for the full tracked and untracked registration commands.
 - **Valid distribution targets:** `.pi/workflows/`, `.agents/workflows/`, or `<agent dir>/workflows/` —
-  any directory the pi-subagents resolver scans works; pick the one your setup already uses.- **Edit at source only** (`~/pi-workflows`), then `skillshare sync extras --force` — targets are
+  any directory the pi-subagents resolver scans works; pick the one your setup already uses.
+- **Edit at source only** (`~/pi-workflows`), then `skillshare sync extras --force` — targets are
   managed **copies** (mode=copy) that go stale after source edits; plain sync SKIPS conflicting
   files in copy mode, so `--force` is the standard re-sync. `skillshare extras list` shows drift,
   `skillshare diff` covers extras. Never edit synced files inside a project.
@@ -48,19 +49,14 @@ into prek and GitHub Actions; it must pass before every push. Workflow scripts m
 The CI gate above. Run locally before pushing: `node scripts/check-workflow-syntax.mjs` (all
 workflows) or pass specific files.
 
-### scripts/analyze-subagent-transcripts.mjs
-Deterministic transcript diagnostics over pi session files:
+### scripts/analyze-subagent-transcripts.ts
+TypeScript diagnostics over pi workflow journals + sub-agent session files (run with bun):
 
 ```bash
-node scripts/analyze-subagent-transcripts.mjs [sessionsDir] [--days N] [--top N]
+bun scripts/analyze-subagent-transcripts.ts [SESSIONS_DIR] [--days N] [--top N] [--last-n N] [--range A..B] [--json | --plain]
 ```
 
-Reports: aggregate tool distribution, per-session token totals (replay-inclusive), context hogs
-(largest tool results), loop signatures (identical tool+args ≥5×), and ctx_* adoption (the
-lean-ctx discipline check). Live use (2026-09-13) pinpointed the run-2 loop as a 2,064×
-degenerate blocked-snapshot `StructuredOutput` from a `glm-5.3-flash` status child — the
-finding that drove the QA pattern (un-schema'd text verdicts + `parseAgentJson`) and the
-3-strike malformed-call cap.
+A workflow run = one `wf_*.workflow.jsonl` journal; its sub-agent children = sidechain sessions in the run's time window, role-classified from the first dispatch prompt. Reports per-run/per-role/overall token stats (total/avg/min/max/median), aggregate tool distribution, loop signatures, and ctx_* adoption. Output modes: default pretty (console-table-printer tables + @crafter/charts sparklines), `--plain` (text), `--json` (programmatic). Live use (2026-09-13) identified the 2,064× degenerate `StructuredOutput` loop from a `glm-5.3-flash` status child.
 
 ## Operational notes
 
