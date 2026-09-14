@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.3](https://github.com/raphaelbahat/pi-workflows/compare/v1.14.2...v1.14.3) (2026-09-14)
+
+
+### Bug Fixes
+
+* eviction-resilient fresh-spawn fallback at all three resume sites — a resume on a record evicted by pi-subagents' ~10-min retention (late host answers under fix mode) now falls back to a FRESH implementer spawn with the same self-contained prompt instead of deferring the task ([74c58ab](https://github.com/raphaelbahat/pi-workflows/commit/74c58ab39d02f4b0934541212bfafcfee64452f9))
+
 ## [1.14.2](https://github.com/raphaelbahat/pi-workflows/compare/v1.14.1...v1.14.2) (2026-09-14)
 
 
