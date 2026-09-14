@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.2](https://github.com/raphaelbahat/pi-workflows/compare/v1.11.1...v1.11.2) (2026-09-14)
+
+
+### Bug Fixes
+
+* SHELL & SEARCH rule corrected — ctx_* are deterministically ABSENT in workflow-spawned sub-agents (13/13 failures, no fail-then-recover signature, all successes are the main session; lean-ctx session_start setActiveTools x pi-subagents renarrow seam = pi-subagents [#302](https://github.com/raphaelbahat/pi-workflows/issues/302) zone); drop the unsupported CTX TIMING NOTE retry advice; probe-9's 'OK' was a native-grep fallback mislabeled by the child ([93eed73](https://github.com/raphaelbahat/pi-workflows/commit/93eed731ed68b24f155008d3042fe10a5f93224e))
+
 ## [1.11.1](https://github.com/raphaelbahat/pi-workflows/compare/v1.11.0...v1.11.1) (2026-09-14)
 
 
