@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.0](https://github.com/raphaelbahat/pi-workflows/compare/v1.13.0...v1.14.0) (2026-09-14)
+
+
+### Features
+
+* populated --help (script description, per-option help strings with defaults, real-path examples) via Optique message descriptions; --top rewired to a functional top-children-by-tokens table (loop/hog suspects); --last-n default documented ([05f011c](https://github.com/raphaelbahat/pi-workflows/commit/05f011cbb07c8e0f71e3fed14244824062202d2a))
+
 ## [1.13.0](https://github.com/raphaelbahat/pi-workflows/compare/v1.12.0...v1.13.0) (2026-09-14)
 
 
