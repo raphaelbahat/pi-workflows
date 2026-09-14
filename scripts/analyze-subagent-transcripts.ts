@@ -21,6 +21,7 @@ import { argument, option } from "@optique/core/primitives";
 import { object } from "@optique/core/constructs";
 import { optional } from "@optique/core/modifiers";
 import { string, integer } from "@optique/core/valueparser";
+import { message } from "@optique/core/message";
 import { run } from "@optique/run";
 import { Table } from "console-table-printer";
 import { sparkColumn } from "@crafter/charts";
@@ -35,17 +36,21 @@ interface CliOptions {
   plain: boolean;
 }
 
-const cli = object({
-    sessionsDir: optional(argument(string({ metavar: "SESSIONS_DIR" }))),
-    days: optional(option("--days", integer({ metavar: "N" }))),
-    top: optional(option("--top", integer({ metavar: "N" }))),
-    lastN: optional(option("--last-n", integer({ metavar: "N" }))),
-    range: optional(option("--range", string({ metavar: "A..B" }))),
-    json: option("--json"),
-    plain: option("--plain"),
-});
-
-const opts = run(cli, { help: "both" }) as CliOptions;
+const cli = object(
+  {
+    sessionsDir: optional(argument(string({ metavar: "SESSIONS_DIR", description: message`pi sessions directory (default: this project's dir under ~/.pi/agent/sessions, else the most recently active one)` }))),
+    days: optional(option("--days", integer({ metavar: "N", description: message`only runs whose journals were modified within the last N days` }), { description: message`lookback window in days (default: 14)` })),
+    top: optional(option("--top", integer({ metavar: "N" }), { description: message`rows per legacy top-list (default: 10)` })),
+    lastN: optional(option("--last-n", integer({ metavar: "N" }), { description: message`process only the N most recent workflow runs (newest first)` })),
+    range: optional(option("--range", string({ metavar: "A..B", description: message`1-based inclusive ordinal slice of the newest-first run list, e.g. 2..4` }), { description: message`slice of recent runs (applied after --last-n)` })),
+    json: option("--json", { description: message`machine-readable JSON report (for agents/programmatic use)` }),
+    plain: option("--plain", { description: message`plain text report (no tables/charts)` }),
+  },
+  { description: message`Deterministic diagnostics over pi workflow runs: per-run and per-role token stats (total/avg/min/max/median), tool distribution, loop signatures, ctx_* adoption. Default output: pretty (tables + sparkline charts).` },
+);
+const opts: CliOptions = run(cli, { help: "both" }) as CliOptions;
+if (opts.days == null) opts.days = 14;
+if (opts.top == null) opts.top = 10;
 if (opts.range) {
   const m = opts.range.split("..");
   const a = Number(m[0]);

@@ -149,10 +149,10 @@ Arguments may be passed via the `args` argument — as a JSON object or a JSON-e
 
 - **Syntax gate**: `node scripts/check-workflow-syntax.mjs` — `node --check` on every workflow
   script; wired into prek and GitHub Actions; must pass before every push.
-- **Transcript diagnostics**: `node scripts/analyze-subagent-transcripts.mjs [sessionsDir]
-[--days N] [--top N]` — aggregate tool distribution, per-session token totals (replay-inclusive),
-  context hogs (largest tool results), loop signatures (identical tool+args ≥5×), and ctx_*
-  adoption. Live use identified the 2,292-call `StructuredOutput` production loop.
+- **Transcript diagnostics**: `bun scripts/analyze-subagent-transcripts.ts [SESSIONS_DIR] [--days N]
+  [--top N] [--last-n N] [--range A..B] [--json | --plain]` — per-run/per-role/overall token stats
+  (total/avg/min/max/median), tool distribution, loop signatures, ctx_* adoption. Live use
+  identified the 2,292-call `StructuredOutput` production loop.
 - Workflow scripts must keep the `export const meta = { name, description }` declaration (the
   resolver's marker), a pure-literal `meta`, and no `Date.now`/`Math.random` (determinism for
   resume).

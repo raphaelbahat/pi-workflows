@@ -71,7 +71,14 @@ Rolling (last 2–3, kept per-sub-agent) and injected into subsequent prompts. E
 ≤200 words **written FOR THE NEXT SUB-AGENT** — the implementer's names the verifier for this
 task then the next task's implementer; the verifier's names the next task's implementer.
 Required content: absolute paths touched + what changed in each; decisions and why; gotchas;
-current test state; THE one thing the next sub-agent must know first.
+current test state; and up to THREE ranked must-know items (1 = most critical), plus a
+look-up hint per touched file (grep keyword/short string first, changed line range second).
+
+### Corrective load retry
+
+When the Load child returns prose instead of the verbatim JSON payload (flash-tier roulette: 4/5
+children summarized in the 2026-09-14 campaign), ONE corrective re-dispatch runs with an
+anti-prose instruction before the run bails with `load-failed`.
 
 ### Runtime disciplines (the shared TOOL block, in order)
 
@@ -79,11 +86,11 @@ current test state; THE one thing the next sub-agent must know first.
 2. **3-strike malformed-call cap** — a rejected call is re-issued cleanly at most 3 times, then
    the child returns its best-effort text. (This killed the production loop class: a glm-5.3-flash
    status child re-emitted a degenerate `StructuredOutput` 2,064×.)
-3. **SHELL & SEARCH hard rule** — every command via `ctx_shell`, every content search via
-   `ctx_grep`, file reads via `ctx_read`/bounded ranges; native `bash`/`grep`/whole-file `read`
-   only when the ctx tool is not found, and the child MUST say so in its final summary.
-4. **CTX timing note** — a `not found` ctx tool may be pre-registration (the lean-ctx bridge
-   connects asynchronously); use the native fallback and retry the ctx tool after a few turns.
+3. **SHELL & SEARCH rule (corrected)** — use `ctx_shell`/`ctx_grep`/`ctx_read` only if they are
+   present in the session\'s tool list (check before first use); in workflow-spawned sub-agent
+   sessions they are typically ABSENT (lean-ctx\'s SDK peer dep could not resolve from the Outfitter
+   cache until `@earendil-works/pi-coding-agent` was installed there — outfitter#403) — then run
+   commands with bash, searches with grep, reads with read directly, WITHOUT retrying ctx tools.
 5. **One final answer** — `StructuredOutput` exactly once when available, else plain text
    (raw JSON is fine).
 
