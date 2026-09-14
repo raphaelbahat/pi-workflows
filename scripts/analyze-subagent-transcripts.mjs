@@ -1,115 +1,217 @@
 #!/usr/bin/env node
-// analyze-subagent-transcripts.mjs — deterministic transcript diagnostics for pi session files.
+// analyze-subagent-transcripts.mjs — deterministic diagnostics for pi workflow runs.
 //
 // Usage:
 //   node scripts/analyze-subagent-transcripts.mjs [sessionsDir] [--days N] [--top N]
+//        [--last-n N] [--range A..B]
 //
-// Defaults: sessionsDir = ~/.pi/agent/sessions/<--cwd-slug--> when run from a project, else ~/.pi/agent/sessions;
-// days = 7; top = 10.
-// Reports: aggregate tool distribution, per-session token totals, context hogs (largest tool results),
-// loop detection (identical tool+args repeats), and ctx_* adoption (lean-ctx discipline check).
+// --last-n N    process the N most recent workflow runs (newest first). Default: all found.
+// --range A..B  slice the newest-first run list ordinally (1-based, inclusive), e.g. --range 2..4
+//               processes the 2nd through 4th most recent runs. Applied after --last-n.
+//
+// A "workflow run" = one `wf_*.workflow.jsonl` journal under /tmp/pi-subagents-1000/**/tasks/;
+// its sub-agent children = sidechain session files created within (prev run end, this run end].
+// Role per child is classified from the first user prompt (implementer / verifier / status /
+// load / primer / final / escalate / selffix / reverify / discovery / gate / reviewer / compose /
+// snapshot / resolve / other).
+//
+// Reports per workflow: children, total/avg/min/max/median tokens, per-role breakdown.
+// Aggregates per role across runs and overall totals.
 
 import { readdirSync, readFileSync, statSync } from 'node:fs'
-import { join, basename } from 'node:path'
+import { join } from 'node:path'
 import { homedir } from 'node:os'
 
 const argv = process.argv.slice(2)
 let dir = null
-let days = 7
-let top = 10
+let days = 14
+let lastN = Infinity
+let rangeA = null
+let rangeB = null
 for (let i = 0; i < argv.length; i++) {
-  if (argv[i] === '--days') days = Number(argv[++i]) || 7
-  else if (argv[i] === '--top') top = Number(argv[++i]) || 10
-  else dir = argv[i]
+  if (argv[i] === '--days') days = Number(argv[++i]) || 14
+  else if (argv[i] === '--last-n') lastN = Number(argv[++i]) || Infinity
+  else if (argv[i] === '--range') {
+    const m = String(argv[++i]).split('..')
+    rangeA = Number(m[0]) || null
+    rangeB = m.length > 1 ? Number(m[1]) || rangeA : rangeA
+  } else dir = argv[i]
 }
 if (!dir) {
+  const base = join(process.env.HOME || '', '.pi/agent/sessions')
   const slug = '--' + process.cwd().replaceAll('/', '-') + '-'
-  dir = join(process.env.HOME || '', '.pi/agent/sessions', slug)
+  dir = join(base, slug)
+  try {
+    if (!statSync(dir).isDirectory()) throw new Error('missing')
+  } catch {
+    // fall back to the project dir with the most recently modified .jsonl
+    let best = null; let bestM = -1
+    for (const e of readdirSync(base, { withFileTypes: true })) {
+      if (!e.isDirectory()) continue
+      const d = join(base, e.name)
+      let m = -1
+      try { for (const f of readdirSync(d)) { if (f.endsWith('.jsonl')) m = Math.max(m, statSync(join(d, f)).mtimeMs) } } catch {}
+      if (m > bestM) { bestM = m; best = d }
+    }
+    if (best) dir = best
+  }
 }
-const cutoff = Date.now() - days * 86400_000
+const tmpRoot = join(process.env.TMPDIR || '/tmp', 'pi-subagents-1000')
 
-const sessions = []
+// ── collect workflow run journals (newest first) ────────────────────────────
+function findJournals(root, out) {
+  let entries
+  try { entries = readdirSync(root, { withFileTypes: true }) } catch { return }
+  for (const e of entries) {
+    const p = join(root, e.name)
+    if (e.isDirectory()) findJournals(p, out)
+    else if (e.name.endsWith('.workflow.jsonl')) out.push({ path: p, mtime: statSync(p).mtimeMs, id: e.name.replace(/\.workflow\.jsonl$/, '') })
+  }
+}
+const journals = []
+findJournals(tmpRoot, journals)
+journals.sort((a, b) => b.mtime - a.mtime)
+let selected = journals.filter(j => Date.now() - j.mtime <= days * 86400_000)
+selected = selected.slice(0, lastN === Infinity ? selected.length : lastN)
+if (rangeA !== null) {
+  const a = Math.max(1, rangeA)
+  const b = Math.min(selected.length, rangeB || rangeA)
+  selected = selected.slice(a - 1, b)
+}
+
+// ── collect sidechain child sessions ────────────────────────────────────────
+const children = []
 for (const f of readdirSync(dir)) {
   if (!f.endsWith('.jsonl')) continue
   const p = join(dir, f)
-  if (statSync(p).mtimeMs < cutoff) continue
-  sessions.push(parseSession(p))
-}
-
-function parseSession(path) {
-  const s = { path, name: basename(path), calls: {}, tokens: 0, turns: 0, results: [], firstPrompt: '', sidechain: false }
-  let seenResultBytes = 0
-  for (const line of readFileSync(path, 'utf8').split('\n')) {
+  const child = { path: p, name: f, created: 0, tokens: 0, calls: {}, prompts: [], resultBytes: 0 }
+  const m = f.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})/)
+  if (m) child.created = Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`)
+  for (const line of readFileSync(p, 'utf8').split('\n')) {
     if (!line.trim()) continue
     let r
     try { r = JSON.parse(line) } catch { continue }
-    if (r.isSidechain) s.sidechain = true
-    const m = r.message || {}
-    if (m.role === 'user' && !s.firstPrompt) {
-      const c = m.content
+    if (!child.isChild) child.isChild = !!r.isSidechain || !!r.parentSession
+    if (!child.isChild) continue
+    const msg = r.message || {}
+    if (msg.role === 'user') {
+      const c = msg.content
       const t = typeof c === 'string' ? c : (Array.isArray(c) ? c.map(x => (x && x.text) || '').join(' ') : '')
-      s.firstPrompt = t.slice(0, 90).replace(/\s+/g, ' ')
+      if (t.trim()) child.prompts.push(t)
     }
-    if (m.role === 'assistant') {
-      s.turns++
-      const u = m.usage || {}
-      s.tokens += u.totalTokens || 0
-      for (const c of Array.isArray(m.content) ? m.content : []) {
-        if (c && c.type === 'toolCall') {
-          const key = c.name
-          s.calls[key] = (s.calls[key] || 0) + 1
-          const sig = key + ' ' + JSON.stringify(c.arguments || {})
-          s.results.push({ kind: 'call', key: sig.slice(0, 160), bytes: sig.length })
-        }
+    if (msg.role === 'assistant') {
+      const u = msg.usage || {}
+      child.tokens += u.totalTokens || 0
+      for (const c of Array.isArray(msg.content) ? msg.content : []) {
+        if (c && c.type === 'toolCall') child.calls[c.name] = (child.calls[c.name] || 0) + 1
       }
     }
-    if (m.role === 'toolResult') {
-      let txt = ''
-      const c = m.content
-      if (typeof c === 'string') txt = c
-      else if (Array.isArray(c)) txt = c.map(x => (x && x.text) || '').join('\n')
-      seenResultBytes += txt.length
-      s.results.push({ kind: 'RESULT ' + (m.toolName || '?') + (m.isError ? ' [ERROR]' : ''), bytes: txt.length, excerpt: txt.slice(0, 90).replace(/\s+/g, ' ') })
+    if (msg.role === 'toolResult') {
+      const c = msg.content
+      const t = typeof c === 'string' ? c : (Array.isArray(c) ? c.map(x => (x && x.text) || '').join(' ') : '')
+      child.resultBytes += t.length
     }
   }
-  s.resultBytes = seenResultBytes
-  s.totalCalls = Object.values(s.calls).reduce((a, b) => a + b, 0)
-  s.ctxCalls = Object.entries(s.calls).filter(([k]) => k.startsWith('ctx_')).reduce((a, [, v]) => a + v, 0)
-  s.nativeShell = (s.calls.bash || 0) + (s.calls.grep || 0) + (s.calls.read || 0)
-  // loop detection: identical tool+args signature repeated >= 5 times
-  const counts = {}
-  const callSigs = s.results.filter(r => !r.kind.startsWith('RESULT'))
-  for (const r of callSigs) counts[r.key] = (counts[r.key] || 0) + 1
-  const worst = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]
-  s.loop = worst && worst[1] >= 5 ? { signature: worst[0], count: worst[1] } : null
-  return s
+  if (child.prompts.length || child.tokens) children.push(child)
 }
 
+function classify(prompts) {
+  // Classify on the FIRST prompt only: children are dispatched with their role in prompt 1.
+  // Main-session files quote workflow phrases in later prompts — first-prompt gating excludes them.
+  const first = prompts[0] || ''
+  let role = 'other'
+  if (/Assigned task:/.test(first)) role = 'implementer'
+  else if (/Verify task /.test(first)) role = 'verifier'
+  else if (/Re-run: .*instructions apply/.test(first)) role = 'status'
+  else if (/Final apply state/.test(first)) role = 'final'
+  else if (/Load the apply state/.test(first)) role = 'load'
+  else if (/Produce the CONTEXT PRIMER/.test(first)) role = 'primer'
+  else if (/escalation channel for a blocked/.test(first)) role = 'escalate'
+  else if (/retry-pause\+discovery|Reply with exactly: paused/.test(first)) role = 'pause-discovery'
+  else if (/Run the strict CLI gate/.test(first)) role = 'gate'
+  else if (/read-only reviewer dimension/.test(first)) role = 'reviewer'
+  else if (/composing a validation scorecard/.test(first)) role = 'compose'
+  else if (/Snapshot the OpenSpec change/.test(first)) role = 'snapshot'
+  else if (/resolve the artifact graph/.test(first)) role = 'resolve'
+  // Same-family refinements may consult later prompts (resume/self-fix rounds).
+  const joined = prompts.join(' | ')
+  if (role === 'implementer' && /UNANSWERED/.test(joined)) role = 'implementer-selffix'
+  if (role === 'verifier' && /Re-verify task/.test(joined)) role = 'verifier-reverify'
+  return role
+}
+
+// ── assign children to runs by time window ──────────────────────────────────
+const runs = selected.map((j, i) => ({ ...j, end: j.mtime, start: i + 1 < selected.length ? selected[i + 1].mtime : 0, children: [] }))
+const excludedInteractive = []
+for (const child of children) {
+  // Only sessions with a known workflow prompt signature count as workflow children —
+  // main-session files chain via parentSession too and would otherwise pollute run windows.
+  if (classify(child.prompts) === 'other') { excludedInteractive.push(child); continue }
+  const run = runs.find(r => child.created <= r.end + 60000 && (!r.start || child.created > r.start - 60000)) || runs[runs.length - 1]
+  if (run && child.created <= run.end + 60000) run.children.push(child)
+}
+
+// ── stats helpers ───────────────────────────────────────────────────────────
+const median = arr => { if (!arr.length) return 0; const s = arr.slice().sort((a, b) => a - b); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2 }
+const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0
+const fmt = n => Math.round(n).toLocaleString('en-US')
+const statsLine = (label, arr) => `${label}: total ${fmt(arr.reduce((a, b) => a + b, 0))} | avg ${fmt(avg(arr))} | min ${fmt(Math.min(...arr))} | max ${fmt(Math.max(...arr))} | median ${fmt(median(arr))}`
+
+function roleOf(child) { return classify(child.prompts) }
+
+// ── per-workflow section ────────────────────────────────────────────────────
+const out = []
+out.push(`# Workflow run diagnostics — ${runs.length} run(s) (of ${journals.length} journals, last ${days}d)`)
+out.push(`# children classified: ${children.length} (workflow-signatured: ${children.length - excludedInteractive.length}; interactive/main excluded: ${excludedInteractive.length})`)
+
+const roleAgg = {}
+let grandTotal = 0
+let grandChildren = 0
+
+for (const run of runs) {
+  const toks = run.children.map(c => c.tokens)
+  grandTotal += toks.reduce((a, b) => a + b, 0)
+  grandChildren += toks.length
+  out.push(`\n## Run ${run.id.slice(0, 18)} — ${new Date(run.end).toISOString().slice(0, 16)} — ${run.children.length} children, ${fmt(toks.reduce((a, b) => a + b, 0))} tokens`)
+  if (!toks.length) { out.push('  (no sidechain children found in window)'); continue }
+  out.push('  ' + statsLine('tokens/child', toks))
+  const byRole = {}
+  for (const c of run.children) {
+    const role = roleOf(c)
+    byRole[role] = byRole[role] || []
+    byRole[role].push(c.tokens)
+    roleAgg[role] = roleAgg[role] || []
+    roleAgg[role].push(c.tokens)
+  }
+  for (const [role, arr] of Object.entries(byRole).sort((a, b) => b[1].reduce((x, y) => x + y, 0) - a[1].reduce((x, y) => x + y, 0))) {
+    out.push(`    ${role.padEnd(22)} n=${String(arr.length).padStart(3)}  ${statsLine('', arr)}`)
+  }
+}
+
+// ── per-role aggregate section ──────────────────────────────────────────────
+out.push(`\n## Per-role aggregates (across ${runs.length} run(s))`)
+for (const [role, arr] of Object.entries(roleAgg).sort((a, b) => b[1].reduce((x, y) => x + y, 0) - a[1].reduce((x, y) => x + y, 0))) {
+  out.push(`  ${role.padEnd(22)} n=${String(arr.length).padStart(3)}  ${statsLine('tokens', arr)}`)
+}
+
+// ── overall section ─────────────────────────────────────────────────────────
+const runTotals = runs.map(r => r.children.reduce((a, c) => a + c.tokens, 0))
+out.push(`\n## Overall`)
+if (runTotals.length) out.push('  ' + statsLine('tokens/run', runTotals))
+if (grandChildren) {
+  const allChildToks = runs.flatMap(r => r.children.map(c => c.tokens))
+  out.push('  ' + statsLine('tokens/child (all)', allChildToks))
+  out.push(`  grand total: ${fmt(grandTotal)} tokens across ${grandChildren} children in ${runs.length} run(s)`)
+} else {
+  out.push('  (no children matched — nothing to total)')
+}
+
+// ── legacy sections (kept for continuity) ───────────────────────────────────
 const agg = {}
-let totTokens = 0
-for (const s of sessions) for (const [k, v] of Object.entries(s.calls)) agg[k] = (agg[k] || 0) + v
-for (const s of sessions) totTokens += s.tokens
+for (const c of children) for (const [k, v] of Object.entries(c.calls)) agg[k] = (agg[k] || 0) + v
+out.push(`\n## Aggregate tool distribution (sidechain children)`)
+for (const [k, v] of Object.entries(agg).sort((a, b) => b[1] - a[1]).slice(0, 15)) out.push(`  ${String(v).padStart(6)}  ${k}`)
+const ctxAdopt = children.filter(c => Object.keys(c.calls).some(k => k.startsWith('ctx_'))).length
+out.push(`\n## ctx_* adoption: ${ctxAdopt}/${children.length} children used any ctx_* tool`)
 
-const sortedSessions = sessions.slice().sort((a, b) => b.tokens - a.tokens)
-const hogs = sessions
-  .flatMap(s => s.results.filter(r => r.kind.startsWith('RESULT')).map(r => ({ session: s.name.slice(11, 24), ...r })))
-  .sort((a, b) => b.bytes - a.bytes)
-  .slice(0, top)
-const ctxAdopt = sessions.filter(s => s.ctxCalls > 0).length
-
-console.log(`# Transcript diagnostics — ${sessions.length} session file(s) in last ${days}d (${dir})`)
-console.log(`\n## Aggregate tool distribution (all sessions)`)
-for (const [k, v] of Object.entries(agg).sort((a, b) => b[1] - a[1]).slice(0, 15)) console.log(`  ${String(v).padStart(6)}  ${k}`)
-console.log(`\n## Token totals: ${totTokens.toLocaleString()} (replay-inclusive) across ${sessions.length} files`)
-console.log(`## ctx_* adoption: ${ctxAdopt}/${sessions.length} files used any ctx_* tool`)
-console.log(`\n## Top ${top} sessions by reported tokens`)
-for (const s of sortedSessions.slice(0, top)) {
-  console.log(`  ${s.tokens.toLocaleString().padStart(11)}  calls=${String(s.totalCalls).padStart(4)}  resultBytes=${String(s.resultBytes).padStart(8)}  ${s.sidechain ? '[child] ' : '[main]  '}${s.firstPrompt}`)
-  if (s.loop) console.log(`     LOOP x${s.loop.count}: ${s.loop.signature}`)
-}
-console.log(`\n## Top ${top} context hogs (largest tool results)`)
-for (const h of hogs) console.log(`  ${String(h.bytes).padStart(8)} B  ${h.session}  ${h.kind}  ${(h.excerpt || '').slice(0, 80)}`)
-console.log(`\n## Loops (identical tool+args >= 5x)`)
-let any = false
-for (const s of sessions) if (s.loop) { any = true; console.log(`  ${s.name.slice(11, 24)}  x${s.loop.count}  ${s.loop.signature}`) }
-if (!any) console.log('  (none)')
+console.log(out.join('\n'))

@@ -132,7 +132,7 @@ const TESTGATE = A.testGate === true
 
   // Model tiers (add-pipeline-efficiency D1): flash defaults, host-overridable per run.
   const MODELS = {
-    implementer: A.implementerModel || 'deepseek/deepseek-v4-flash-0731',
+    implementer: A.implementerModel || 'deepseek/deepseek-v4.1-flash',
     verifier: A.verifierModel || 'qwen/qwen3.8-flash',
     utility: A.utilityModel || 'qwen/qwen3.8-flash',
   }
@@ -143,13 +143,13 @@ const TESTGATE = A.testGate === true
 // call down a hardcoded cross-provider chain, filtered to the models the Load phase
 // discovered via `pi --list-models` (secret-free; never auth.json/models.json).
 const FALLBACKS = {
-  'qwen/qwen3.8-flash': ['deepseek/deepseek-v4-flash-0731', 'z-ai/glm-5.3-flash'],
-  'deepseek/deepseek-v4-flash-0731': ['qwen/qwen3.8-flash', 'z-ai/glm-5.3-flash'],
+  'qwen/qwen3.8-flash': ['deepseek/deepseek-v4.1-flash', 'z-ai/glm-5.3-flash'],
+  'deepseek/deepseek-v4.1-flash': ['qwen/qwen3.8-flash', 'z-ai/glm-5.3-flash'],
   'z-ai/glm-5.3-flash': ['qwen/qwen3.8-flash'],
 }
 let AUTHENTICATED_MODELS = null // set by the Load-phase discovery; null = unfiltered
 function chainFor(primary) {
-  const base = FALLBACKS[primary] || ['deepseek/deepseek-v4-flash-0731', 'qwen/qwen3.8-flash', 'z-ai/glm-5.3-flash']
+  const base = FALLBACKS[primary] || ['deepseek/deepseek-v4.1-flash', 'qwen/qwen3.8-flash', 'z-ai/glm-5.3-flash']
   let chain = base.filter(function (m) { return m !== primary })
   if (AUTHENTICATED_MODELS && AUTHENTICATED_MODELS.length) {
     chain = chain.filter(function (m) { return AUTHENTICATED_MODELS.indexOf(m) !== -1 })

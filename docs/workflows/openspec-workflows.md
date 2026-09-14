@@ -135,7 +135,7 @@ no archive — the host reviews, commits, and archives after the digest.
 
 | Role | Primary (host-overridable) | Effort | Fallback chain |
 |---|---|---|---|
-| implementer | `deepseek/deepseek-v4-flash-0731` | high | `qwen3.8-flash` → `glm-5.3-flash` |
+| implementer | `deepseek/deepseek-v4.1-flash` | high | `qwen3.8-flash` → `glm-5.3-flash` |
 | verifier | `qwen/qwen3.8-flash` | medium | `deepseek-v4-flash` → `glm-5.3-flash` |
 | utility (load/primer/status/final) | `qwen/qwen3.8-flash` | low–medium | `deepseek-v4-flash` → `glm-5.3-flash` |
 | author (plan) | `qwen/qwen3.8-flash` | high | same chain logic |
