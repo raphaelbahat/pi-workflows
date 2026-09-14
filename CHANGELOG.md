@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.1](https://github.com/raphaelbahat/pi-workflows/compare/v1.11.0...v1.11.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* LAZY model discovery — pi --list-models moves from eager Load-phase to the agentFB failure path (once per run, combined pause+discovery child); production Load children probed the CLI 2-6x per run and ingested ~30KB of 466-model table on error-free runs; change artifacts + docs amended ([d866034](https://github.com/raphaelbahat/pi-workflows/commit/d866034a6378bde9682ec69bc09cef7aafdc4fc8))
+
 ## [1.11.0](https://github.com/raphaelbahat/pi-workflows/compare/v1.10.0...v1.11.0) (2026-09-13)
 
 
