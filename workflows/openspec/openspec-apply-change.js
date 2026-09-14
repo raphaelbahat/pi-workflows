@@ -398,7 +398,7 @@ const implResponse = await agentFB(
       // on a resumed call — the output is TEXT and is routed to the independent
       // verifier below (which remains a fresh spawn).
       log('Host answered — resuming task ' + task.id + ' via resume (context preserved)')
-      const retry = await agentFB(
+      const retryPrompt = [
         [IMPLEMENTER_CONTRACT,
          'Assigned task: ' + task.id + ' — ' + task.description,
          'WORKING DIRECTORY: ' + (REPO_ABS || '(unknown)') + ' — absolute paths only, as before.',
@@ -410,11 +410,17 @@ const implResponse = await agentFB(
          '',
          'Finish the task now. Then reply with a SHORT TEXT summary: status, files touched (absolute paths), test outcome. Do NOT call StructuredOutput — it is not available on this resumed session.',
         ].join('\n'),
-        { label: 'implement:' + task.id, resume: 'implement:' + task.id, phase: 'Implement' },
-      )
+      ].join('\n')
+        // Eviction-resilient (2026-09-14): the child record is dropped ~10 min after it finishes —
+        // a late host answer can outlive it. Resume first (context preserved); on null, fresh spawn.
+      let retry = await agentFB(retryPrompt, { label: 'implement:' + task.id, resume: 'implement:' + task.id, phase: 'Implement' })
+      if (!retry) {
+        log('Task ' + task.id + ': resume target evicted — fresh-spawn fallback')
+        retry = await agentFB(retryPrompt, { label: 'implement:' + task.id + ':fresh', phase: 'Implement' })
+      }
       if (!retry) {
         skippedTasks.push(task.id)
-        log('Task ' + task.id + ' DEFERRED (host answered but the resumed implementer returned nothing) — continuing')
+        log('Task ' + task.id + ' DEFERRED (host answered but both resume and fresh spawn returned nothing) — continuing')
         phase('Implement')
         continue
       }
@@ -422,7 +428,7 @@ const implResponse = await agentFB(
       phase('Implement')
     } else if (UNANSWERED === 'fix') {
       log('Task ' + task.id + ': escalation unanswered — self-guided fix attempt (onUnansweredEscalation=fix)')
-      const selffix = await agentFB(
+      const selffixPrompt = [
         [IMPLEMENTER_CONTRACT,
          'Assigned task: ' + task.id + ' — ' + task.description,
          'WORKING DIRECTORY: ' + (REPO_ABS || '(unknown)') + ' — absolute paths only, as before.',
@@ -433,8 +439,14 @@ const implResponse = await agentFB(
          '',
          'Finish the task now. Then reply with a SHORT TEXT summary: status, files touched (absolute paths), test outcome. Do NOT call StructuredOutput.',
         ].join('\n'),
-        { label: 'implement:' + task.id, resume: 'implement:' + task.id, phase: 'Implement' },
-      )
+      ].join('\n')
+        // Eviction-resilient (2026-09-14): the child record is dropped ~10 min after it finishes —
+        // a late host answer can outlive it. Resume first (context preserved); on null, fresh spawn.
+      let selffix = await agentFB(selffixPrompt, { label: 'implement:' + task.id, resume: 'implement:' + task.id, phase: 'Implement' })
+      if (!selffix) {
+        log('Task ' + task.id + ': resume target evicted — fresh-spawn fallback')
+        selffix = await agentFB(selffixPrompt, { label: 'implement:' + task.id + ':fresh', phase: 'Implement' })
+      }
       if (!selffix) {
         skippedTasks.push(task.id)
         log('Task ' + task.id + ' DEFERRED (self-guided fix returned nothing) — continuing')
@@ -494,7 +506,7 @@ const verifResponse = await agentFB(
     } else if (UNANSWERED === 'fix' && !(selfFixRounds[task.id] >= 1)) {
       selfFixRounds[task.id] = 1
       log('Task ' + task.id + ': verification escalation unanswered — ONE self-guided fix round (onUnansweredEscalation=fix)')
-      const fixResponse = await agentFB(
+      const fixPrompt = [
         [IMPLEMENTER_CONTRACT,
          'Assigned task: ' + task.id + ' — ' + task.description,
          'WORKING DIRECTORY: ' + (REPO_ABS || '(unknown)') + ' — absolute paths only.',
@@ -505,8 +517,14 @@ const verifResponse = await agentFB(
          '',
          'Finish now. Then reply with a SHORT TEXT summary of what you changed. Do NOT call StructuredOutput.',
         ].join('\n'),
-        { label: 'implement:' + task.id, resume: 'implement:' + task.id, phase: 'Implement' },
-      )
+      ].join('\n')
+            // Eviction-resilient (2026-09-14): the child record is dropped ~10 min after it finishes —
+            // a late host answer can outlive it. Resume first (context preserved); on null, fresh spawn.
+      let fixResponse = await agentFB(fixPrompt, { label: 'implement:' + task.id, resume: 'implement:' + task.id, phase: 'Implement' })
+      if (!fixResponse) {
+        log('Task ' + task.id + ': resume target evicted — fresh-spawn fallback')
+        fixResponse = await agentFB(fixPrompt, { label: 'implement:' + task.id + ':fresh', phase: 'Implement' })
+      }
       impl = { task_id: task.id, status: 'implemented', summary: String(fixResponse || '').slice(0, 600), files_touched: [], handoff: '' }
       const reverifResponse = await agentFB(
         [TOOL, VERIFIER_CONTRACT, '',
