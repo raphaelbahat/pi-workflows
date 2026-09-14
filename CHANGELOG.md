@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.1](https://github.com/raphaelbahat/pi-workflows/compare/v1.14.0...v1.14.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* diagnostics charts — categorical braille bar charts (chart().bar(), 8 rows vertical resolution + per-category labels) replace the 1-row sparklines that flattened skewed token ranges ([d27c85d](https://github.com/raphaelbahat/pi-workflows/commit/d27c85d7f034ef94496abd8528d183c288fda158))
+
 ## [1.14.0](https://github.com/raphaelbahat/pi-workflows/compare/v1.13.0...v1.14.0) (2026-09-14)
 
 
