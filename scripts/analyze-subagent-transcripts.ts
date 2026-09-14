@@ -24,7 +24,7 @@ import { string, integer } from "@optique/core/valueparser";
 import { message } from "@optique/core/message";
 import { run } from "@optique/run";
 import { Table } from "console-table-printer";
-import { sparkColumn } from "@crafter/charts";
+import { chart, renderToAnsi } from "@crafter/charts";
 
 interface CliOptions {
   sessionsDir?: string;
@@ -297,11 +297,11 @@ if (opts.json) {
   }
   runsTable.printTable();
 
-  // tokens-per-run sparkline column chart
+  // tokens-per-run categorical bar chart (linear scale; exact values in the table above)
   if (report.runs.length > 1) {
+    const rows = report.runs.map(r => ({ x: r.id.slice(3, 9), tokens: r.stats.total }));
     console.log("\n\x1b[1mtokens per run\x1b[0m\n");
-    console.log(sparkColumn(report.runs.map(r => r.stats.total)));
-    console.log(report.runs.map(r => r.id.slice(3, 9)).join("  ") + "\n");
+    console.log(renderToAnsi(chart({ width: 64, height: 8 }).data(rows, { xKey: "x" }).bar({ key: "tokens", color: "cyan" })));
   }
 
   for (const r of report.runs) {
@@ -324,9 +324,9 @@ if (opts.json) {
   rolesTable.printTable();
 
   if (report.roleAggregates.length > 2) {
-    console.log("\n\x1b[1mtokens by role (sparkline)\x1b[0m\n");
-    console.log(sparkColumn(report.roleAggregates.map(ra => ra.stats.total)));
-    console.log(report.roleAggregates.map(ra => ra.role.slice(0, 6)).join("  ") + "\n");
+    const rows = report.roleAggregates.map(ra => ({ x: ra.role.slice(0, 9), tokens: ra.stats.total }));
+    console.log("\n\x1b[1mtokens by role\x1b[0m\n");
+    console.log(renderToAnsi(chart({ width: 64, height: 8 }).data(rows, { xKey: "x" }).bar({ key: "tokens", color: "green" })));
   }
 
   const topTable = new Table({ title: `Top ${report.topChildren.length} children by tokens (loop/hog suspects)`, columns: [
