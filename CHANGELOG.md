@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.0](https://github.com/raphaelbahat/pi-workflows/compare/v1.11.3...v1.12.0) (2026-09-14)
+
+
+### Features
+
+* diagnostics v2 — workflow-run grouping from wf_*.jsonl journals, per-role classification (implementer/verifier/status/load/primer/...), per-run + per-role + overall token stats (total/avg/min/max/median), --last-n/--range flags, main-session exclusion via first-prompt gating; deepseek v4-flash → v4.1-flash rename ([981df76](https://github.com/raphaelbahat/pi-workflows/commit/981df769831a2c035e066ed966fd51819e90ad1b))
+
 ## [1.11.3](https://github.com/raphaelbahat/pi-workflows/compare/v1.11.2...v1.11.3) (2026-09-14)
 
 
