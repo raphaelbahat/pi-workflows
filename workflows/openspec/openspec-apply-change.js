@@ -13,8 +13,7 @@ export const meta = {
 const TOOL = [
   'TOOL DISCIPLINE: issue at most ONE tool call per message; never batch two or more tool calls in a single turn.',
   'If a tool call is rejected as malformed, silently re-issue that ONE call cleanly — AT MOST 3 TIMES. After 3 rejections of the same call, stop retrying and return your best-effort text answer. Never loop on a rejected call. Never restate or quote tool-call markup as text.',
-  'SHELL & SEARCH RULE: run EVERY command with ctx_shell and EVERY content search with ctx_grep — NEVER native bash/grep; read files with ctx_read or bounded ranges, not whole-file read. Sole exception: the ctx tool is not found in this session — then fall back to bash/grep and SAY SO in your final summary. ctx_* return compressed receipts (large token savings); bash/grep dump raw output into your context.',
-  'CTX TIMING NOTE: a ctx_* tool reported "not found" may simply not be registered YET (the lean-ctx bridge connects asynchronously) — use the native fallback for now and RETRY the ctx tool after a few turns; it often appears mid-session.',
+  'SHELL & SEARCH RULE: use ctx_shell/ctx_grep/ctx_read ONLY IF they are present in your session\'s tool list (check before first use); in workflow-spawned sub-agent sessions they are typically ABSENT — then run commands with bash, searches with grep, and reads with read directly, WITHOUT retrying ctx tools. Token economy still applies: pipe long outputs through | tail -50 and prefer targeted reads.',
   'End your run with ONE final answer. If a StructuredOutput tool is available in your session, call it exactly once with the required object; otherwise end with a plain-text answer (raw JSON is fine) and stop. Do not answer in prose when the tool is required.',
 ].join('\n')
 const IMPLEMENTER_CONTRACT = [
