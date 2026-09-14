@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.0](https://github.com/raphaelbahat/pi-workflows/compare/v1.12.0...v1.13.0) (2026-09-14)
+
+
+### Features
+
+* diagnostics v3 — TypeScript conversion (bun-run), Optique CLI parsing (@optique/core + run), output modes (--json programmatic / --plain / default pretty with console-table-printer tables + @crafter/charts sparklines), --last-n/--range flags preserved ([df9a32b](https://github.com/raphaelbahat/pi-workflows/commit/df9a32b53094a57e06090e89cd0553ea04fc1d7d))
+
 ## [1.12.0](https://github.com/raphaelbahat/pi-workflows/compare/v1.11.3...v1.12.0) (2026-09-14)
 
 
