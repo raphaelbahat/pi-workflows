@@ -273,9 +273,20 @@ const snapRaw = await agentFB(
   ].join('\n'),
   { label: 'load:' + CHANGE, phase: 'Load', agentType: 'general-purpose', effort: 'medium', model: MODELS.utility },
 )
-const snap = parseAgentJson(snapRaw, null)
+// Corrective retry (campaign 2026-09-14: 4/5 load children returned prose summaries instead of the
+// verbatim payload — flash-tier roulette on the same prompt). ONE re-dispatch with a corrective
+// instruction; if that also fails to parse, bail (resumes idempotently).
+let snap = parseAgentJson(snapRaw, null)
 if (!snap) {
-  return { change: CHANGE, error: 'load-failed', note: 'load agent returned unparseable output — re-run resumes idempotently (checkboxes are the state)' }
+  log('load: unparseable output — corrective re-dispatch')
+  const snapRetryRaw = await agentFB(
+    [TOOL, 'Your previous reply was a PROSE SUMMARY — that is unusable. Run: ' + ROOT + 'openspec instructions apply --change "' + CHANGE + '" --json' + STORE, 'Then reply with ONLY the raw JSON payload of that command inside a ```json fenced block — byte-for-byte, no analysis, no prose, no field mapping commentary. Do NOT implement anything.'].join('\n'),
+    { label: 'load-retry:' + CHANGE, phase: 'Load', agentType: 'general-purpose', effort: 'medium', model: MODELS.utility },
+  )
+  snap = parseAgentJson(snapRetryRaw, null)
+}
+if (!snap) {
+  return { change: CHANGE, error: 'load-failed', note: 'load agent returned unparseable output twice (corrective retry included) — re-run resumes idempotently (checkboxes are the state)' }
 }
 // Absolute repo root, derived from the CLI's change_dir (authoritative).
 // Implementer/verifier file operations MUST resolve against this: a workflow
