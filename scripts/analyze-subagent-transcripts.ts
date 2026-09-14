@@ -261,6 +261,12 @@ const report: Report = {
     .map(c => ({ name: c.name.slice(11, 24), role: classify(c), tokens: c.tokens })),
 };
 
+// ── chart helpers (add-fallback-retry-pause era: numeric x + formatted axes) ─
+const compact = (v: number): string => v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : v >= 1e3 ? (v / 1e3).toFixed(0) + "k" : String(Math.round(v));
+function indexXAxis(labels: string[]) {
+  return { format: (v: number): string => labels[Math.round(v)] ?? "" };
+}
+
 // ── output modes ────────────────────────────────────────────────────────────
 if (opts.json) {
   console.log(JSON.stringify(report, null, 2));
@@ -297,11 +303,13 @@ if (opts.json) {
   }
   runsTable.printTable();
 
-  // tokens-per-run categorical bar chart (linear scale; exact values in the table above)
+  // tokens-per-run bar chart (x = run index, labels via xAxis format; exact values in the table above)
   if (report.runs.length > 1) {
-    const rows = report.runs.map(r => ({ x: r.id.slice(3, 9), tokens: r.stats.total }));
+    const ids = report.runs.map(r => r.id.slice(3, 9));
+    const rows = report.runs.map((r, i) => ({ x: i, tokens: r.stats.total }));
+    const maxY = Math.max(...rows.map(r => r.tokens));
     console.log("\n\x1b[1mtokens per run\x1b[0m\n");
-    console.log(renderToAnsi(chart({ width: 64, height: 8 }).data(rows, { xKey: "x" }).bar({ key: "tokens", color: "cyan" })));
+    console.log(renderToAnsi(chart({ width: 64, height: 8 }).data(rows, { xKey: "x" }).yDomain([0, maxY]).bar({ key: "tokens", color: "cyan" }).xAxis(indexXAxis(ids)).yAxis({ format: compact })));
   }
 
   for (const r of report.runs) {
@@ -324,9 +332,11 @@ if (opts.json) {
   rolesTable.printTable();
 
   if (report.roleAggregates.length > 2) {
-    const rows = report.roleAggregates.map(ra => ({ x: ra.role.slice(0, 9), tokens: ra.stats.total }));
+    const names = report.roleAggregates.map(ra => ra.role.slice(0, 9));
+    const rows = report.roleAggregates.map((ra, i) => ({ x: i, tokens: ra.stats.total }));
+    const maxY = Math.max(...rows.map(r => r.tokens));
     console.log("\n\x1b[1mtokens by role\x1b[0m\n");
-    console.log(renderToAnsi(chart({ width: 64, height: 8 }).data(rows, { xKey: "x" }).bar({ key: "tokens", color: "green" })));
+    console.log(renderToAnsi(chart({ width: 64, height: 8 }).data(rows, { xKey: "x" }).yDomain([0, maxY]).bar({ key: "tokens", color: "green" }).xAxis(indexXAxis(names)).yAxis({ format: compact })));
   }
 
   const topTable = new Table({ title: `Top ${report.topChildren.length} children by tokens (loop/hog suspects)`, columns: [
