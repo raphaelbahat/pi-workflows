@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.3](https://github.com/raphaelbahat/pi-workflows/compare/v1.11.2...v1.11.3) (2026-09-14)
+
+
+### Bug Fixes
+
+* corrective load retry — ONE re-dispatch with anti-prose instruction when the load child returns prose instead of the verbatim payload (campaign 2026-09-14: 4/5 load children summarized; the one compliant child's change succeeded) ([a132cbc](https://github.com/raphaelbahat/pi-workflows/commit/a132cbc2b7e952d8de2cdc759aa50db79c2b623d))
+
 ## [1.11.2](https://github.com/raphaelbahat/pi-workflows/compare/v1.11.1...v1.11.2) (2026-09-14)
 
 
