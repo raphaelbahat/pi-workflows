@@ -40,15 +40,21 @@ const cli = object(
   {
     sessionsDir: optional(argument(string({ metavar: "SESSIONS_DIR", description: message`pi sessions directory (default: this project's dir under ~/.pi/agent/sessions, else the most recently active one)` }))),
     days: optional(option("--days", integer({ metavar: "N", description: message`only runs whose journals were modified within the last N days` }), { description: message`lookback window in days (default: 14)` })),
-    top: optional(option("--top", integer({ metavar: "N" }), { description: message`rows per legacy top-list (default: 10)` })),
-    lastN: optional(option("--last-n", integer({ metavar: "N" }), { description: message`process only the N most recent workflow runs (newest first)` })),
+    top: optional(option("--top", integer({ metavar: "N" }), { description: message`rows in the "top children by tokens" table — the largest consumers / loop suspects (default: 10)` })),
+    lastN: optional(option("--last-n", integer({ metavar: "N" }), { description: message`process only the N most recent workflow runs, newest first (default: all runs in the lookback window)` })),
     range: optional(option("--range", string({ metavar: "A..B", description: message`1-based inclusive ordinal slice of the newest-first run list, e.g. 2..4` }), { description: message`slice of recent runs (applied after --last-n)` })),
     json: option("--json", { description: message`machine-readable JSON report (for agents/programmatic use)` }),
     plain: option("--plain", { description: message`plain text report (no tables/charts)` }),
   },
   { description: message`Deterministic diagnostics over pi workflow runs: per-run and per-role token stats (total/avg/min/max/median), tool distribution, loop signatures, ctx_* adoption. Default output: pretty (tables + sparkline charts).` },
 );
-const opts: CliOptions = run(cli, { help: "both" }) as CliOptions;
+const opts: CliOptions = run(cli, {
+  help: "both",
+  description: message`Deterministic diagnostics over pi workflow runs: per-run and per-role token stats (total/avg/min/max/median), tool distribution, loop signatures, and ctx_* adoption. Output modes: default pretty (tables + sparkline charts), --plain (text), --json (programmatic).`,
+  examples: message`bun scripts/analyze-subagent-transcripts.ts --days 3 --plain
+  bun scripts/analyze-subagent-transcripts.ts /home/bahat/.pi/agent/sessions/--home-bahat-projects-pi-codegraphcontext-- --last-n 2
+  bun scripts/analyze-subagent-transcripts.ts --last-n 5 --range 1..3 --json`,
+}) as CliOptions;
 if (opts.days == null) opts.days = 14;
 if (opts.top == null) opts.top = 10;
 if (opts.range) {
@@ -215,6 +221,7 @@ interface Report {
   roleAggregates: RoleAgg[];
   overall: { tokensPerRun: Stats; tokensPerChild: Stats; grandTotal: number };
   ctxAdoption: { adopted: number; total: number };
+  topChildren: Array<{ name: string; role: string; tokens: number }>;
 }
 
 const roleAggMap = new Map<string, number[]>();
@@ -247,6 +254,11 @@ const report: Report = {
   runs: runReports, roleAggregates,
   overall: { tokensPerRun: stats(runTotals), tokensPerChild: stats((children as ChildX[]).filter(c => classify(c) !== "other").map(c => c.tokens)), grandTotal },
   ctxAdoption: { adopted: (children as ChildX[]).filter(c => Object.keys(c.calls).some(k => k.startsWith("ctx_"))).length, total: (children as ChildX[]).length },
+  topChildren: (children as ChildX[])
+    .filter(c => classify(c) !== "other")
+    .sort((a, b) => b.tokens - a.tokens)
+    .slice(0, opts.top ?? 10)
+    .map(c => ({ name: c.name.slice(11, 24), role: classify(c), tokens: c.tokens })),
 };
 
 // ── output modes ────────────────────────────────────────────────────────────
@@ -267,6 +279,8 @@ if (opts.json) {
   L.push(`\n## Overall`);
   L.push(`  tokens/run: total ${fmt(report.overall.tokensPerRun.total)} | avg ${fmt(report.overall.tokensPerRun.avg)} | min ${fmt(report.overall.tokensPerRun.min)} | max ${fmt(report.overall.tokensPerRun.max)} | median ${fmt(report.overall.tokensPerRun.median)}`);
   L.push(`  grand total: ${fmt(report.overall.grandTotal)} tokens across ${report.overall.tokensPerChild.n} children in ${report.runsProcessed} run(s)`);
+  L.push(`\n## Top ${report.topChildren.length} children by tokens (loop/hog suspects)`);
+  for (const t of report.topChildren) L.push(`  ${fmt(t.tokens).padStart(12)}  ${t.role.padEnd(20)}  ${t.name}`);
   L.push(`\n## ctx_* adoption: ${report.ctxAdoption.adopted}/${report.ctxAdoption.total}`);
   console.log(L.join("\n"));
 } else {
@@ -314,6 +328,12 @@ if (opts.json) {
     console.log(sparkColumn(report.roleAggregates.map(ra => ra.stats.total)));
     console.log(report.roleAggregates.map(ra => ra.role.slice(0, 6)).join("  ") + "\n");
   }
+
+  const topTable = new Table({ title: `Top ${report.topChildren.length} children by tokens (loop/hog suspects)`, columns: [
+    { name: "tokens", alignment: "right" }, { name: "role", alignment: "left" }, { name: "session", alignment: "left" },
+  ]});
+  for (const t of report.topChildren) topTable.addRow({ tokens: fmt(t.tokens), role: t.role, session: t.name });
+  topTable.printTable();
 
   console.log(`\nGrand total: \x1b[1m${fmt(report.overall.grandTotal)}\x1b[0m tokens across ${report.overall.tokensPerChild.n} children in ${report.runsProcessed} run(s) · ctx_* adoption ${report.ctxAdoption.adopted}/${report.ctxAdoption.total}\n`);
 }
