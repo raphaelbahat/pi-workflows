@@ -8,8 +8,8 @@
 
 ## 2. Run-time discovery (D2)
 
-- [x] 2.1 Load prompt in `openspec-apply-change.js`: run `ctx_shell 'pi --list-models'`, parse the provider/model table into `provider/model` ids, return them as snapshot field `authenticated_models`; never read `auth.json`/`models.json`.
-- [x] 2.2 `agentFB` filters the fallback chain to the discovered configured list when present (post-Load call sites pass the snapshot list); absent/unparseable discovery is logged and non-blocking (hardcoded chains stand).
+- [x] 2.1 (amended 2026-09-14 to LAZY) Discovery child (via `agentFB` failure path, all three workflows): run `ctx_shell 'pi --list-models'`, parse the provider/model table into `provider/model` ids, cache as `AUTHENTICATED_MODELS`; never read `auth.json`/`models.json`; never run eagerly at Load.
+- [x] 2.2 `agentFB` filters the fallback chain to the discovered configured list when present (lazy discovery fires at the first terminal failure, once per run); absent/unparseable discovery is logged and non-blocking (hardcoded chains stand).
 
 ## 3. Verification
 

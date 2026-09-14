@@ -39,12 +39,15 @@ workflow-grade surface is the CLI table, read by a child agent via ctx_shell.
   host primaries get the default set minus the primary. When a discovered configured
   list exists, the chain is filtered to it (D2); otherwise the hardcoded chain stands
   (discovery must never block — its absence is logged and non-fatal).
-- D2: **Load-phase CLI discovery.** The Load child runs
-  `ctx_shell 'pi --list-models'`, parses the provider/model table rows into
-  `provider/model` ids, and returns them as `authenticated_models`. Authenticated-ness
-  itself is enforced by the retry (a fallback lacking auth fails fast; the chain
-  advances) — the discovered list is a configuration sanity filter, matching the
-  user-approved CLI mechanism rather than `getAvailable()` (SDK-only) or
+- D2: **Lazy CLI discovery (amended 2026-09-14).** The ORIGINAL eager design ran discovery in
+  the Load phase — production showed Load children probing `pi --list-models` 2–6× per run and
+  ingesting the full 466-model table (~30 KB) even on error-free runs. Discovery is now LAZY:
+  `agentFB` triggers it once, at the FIRST terminal fallback need, via a combined
+  "pause+discovery" child (the child parses the CLI table into `provider/model` ids cached as
+  `AUTHENTICATED_MODELS`; when `args.retryPauseMs > 0` the child's `gate` also enforces the
+  ADR-0004 pause). Authenticated-ness is enforced by the retry (a fallback lacking auth fails
+  fast; the chain advances) — the discovered list is a configuration sanity filter, matching
+  the user-approved CLI mechanism rather than `getAvailable()` (SDK-only) or
   `get_available_models` (RPC-mode clients), which workflows cannot reach.
 - Resume semantics: a fallback attempt drops `resume` (and `gate`, which cannot combine
   with a fresh spawn) — the fallback child starts fresh; prompts are self-contained by

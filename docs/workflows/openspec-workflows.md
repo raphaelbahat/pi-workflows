@@ -153,9 +153,11 @@ drop `resume`/`gate` (fresh child; prompts are self-contained by construction).
 no jitter) — then retries the PRIMARY exactly once, and only then enters the chain. Best-effort:
 a failed pause child never blocks; log line: `retry pause: <ms>ms before retrying/fallback`.
 
-Run-time discovery (secret-free): the apply Load child runs `pi --list-models` and returns the
-configured provider/model table as snapshot field `authenticated_models`; `agentFB` filters
-chains to that list. NEVER `auth.json`/`models.json` — they contain user secrets. The
+Run-time discovery (secret-free, LAZY): discovery fires ONCE per run, at the first terminal
+fallback need — a combined "pause + discovery" child runs `pi --list-models` and caches the
+configured provider/model table (`AUTHENTICATED_MODELS`); `agentFB` filters chains to it.
+Never eager at Load (eager discovery made Load children probe the CLI 2–6× per run and ingest
+~30 KB of model table on error-free runs). NEVER `auth.json`/`models.json` — they contain user secrets. The
 programmatic canonical APIs (SDK `modelRuntime.getAvailable()`, RPC `get_available_models`)
 are documented in the pi repo but unreachable from the workflow sandbox — the CLI table is the
 workflow-grade surface. Absent discovery is logged and non-blocking; unknown host primaries

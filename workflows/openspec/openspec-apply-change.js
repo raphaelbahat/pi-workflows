@@ -173,21 +173,52 @@ async function pauseOnce(ms, label) {
     })
   } catch (e) { /* best-effort: a failed pause child never blocks */ }
 }
+let DISCOVERY_ATTEMPTED = false // lazy D2: discover once, at the first terminal fallback need
+async function pauseAndDiscover(ms, label) {
+  log('lazy model discovery + ' + (ms > 0 ? ms + 'ms pause' : 'no pause') + ' before retry/fallback — ' + (label || 'agentFB'))
+  const pauseGate = ms > 0 ? 'sleep ' + Math.ceil(ms / 1000) + ' && true' : null
+  const dopts = {
+    label: 'retry-pause+discovery:' + (label || 'agentFB'),
+    agentType: 'general-purpose',
+    effort: 'minimal',
+    model: (typeof MODELS !== 'undefined' && MODELS.utility) || 'qwen/qwen3.8-flash',
+  }
+  if (pauseGate) dopts.gate = pauseGate
+  try {
+    const o = dopts
+    const resp = await agent([
+      'Run exactly this command via ctx_shell: pi --list-models  (the flag is --list-models; there is NO --models flag). Pipe through: 2>&1 | head -300' +
+      ' — then parse every provider/model row into "provider/model" strings (the table columns are: provider, model, context, max-out, thinking, images; read provider + model columns only).',
+      'NEVER read auth.json or models.json — they contain user secrets.' ,
+      'Reply with ONLY a JSON array of the "provider/model" strings (empty array if the command failed). No prose, no wrapper object.' ,
+    ].join('\n'), o)
+    const parsed = parseAgentJson(resp, null)
+    if (parsed && Array.isArray(parsed) && parsed.length) {
+      AUTHENTICATED_MODELS = parsed
+      log('Discovery (lazy): ' + parsed.length + ' configured models on file for fallback filtering')
+    } else {
+      log('Discovery (lazy): unavailable — fallback chains stay hardcoded (non-blocking)')
+    }
+  } catch (e) { /* best-effort: a failed discovery/pause child never blocks */ }
+}
 async function agentFB(prompt, opts) {
   const r = await agent(prompt, opts)
   if (r !== null && r !== undefined) return r
   const primary = (opts && opts.model) || null
   const chain = chainFor(primary)
   if (!chain.length) return r
-  if (RETRY_PAUSE_MS > 0) {
-    // add-fallback-retry-pause: cover the 429 "retry shortly" window, then ONE primary retry.
-    await pauseOnce(RETRY_PAUSE_MS, (opts && opts.label) || '')
-    const rp = await agent(prompt, opts)
-    if (rp !== null && rp !== undefined) return rp
-    log('primary retry after the pause still failed — proceeding to the fallback chain')
-  } else {
-    log('fallback hop: agent "' + ((opts && opts.label) || '') + '" returned null on ' + (primary || 'the default model') + ' (terminal provider error, e.g. 429 shared-pool rate limit) — retrying on: ' + chain[0])
+  // add-workflow-model-fallback D2 (LAZY): discovery + the 429 pause happen HERE — at the first
+  // terminal failure — never eagerly at Load (children were probing pi --list-models on every run).
+  const pauseLabel = (opts && opts.label) || ''
+  if (!DISCOVERY_ATTEMPTED) {
+    await pauseAndDiscover(RETRY_PAUSE_MS, pauseLabel)
+    DISCOVERY_ATTEMPTED = true
+  } else if (RETRY_PAUSE_MS > 0) {
+    await pauseOnce(RETRY_PAUSE_MS, pauseLabel)
   }
+  const rp = await agent(prompt, opts)
+  if (rp !== null && rp !== undefined) return rp
+  log('primary retry after the pause still failed — proceeding to the fallback chain')
   for (let i = 0; i < chain.length; i++) {
     const fb = Object.assign({}, opts, { model: chain[i] })
     delete fb.resume
@@ -238,16 +269,12 @@ const snapRaw = await agentFB(
    'Load the apply state for change "' + CHANGE + '" WITHOUT modifying anything.',
    'Run: ' + ROOT + 'openspec instructions apply --change "' + CHANGE + '" --json' + STORE,
    'Return the snapshot: state, change_dir, progress, tasks[] (id, description, done), missing_artifacts,',
-   'a 10-line excerpt of the instruction string, and authenticated_models. Do NOT implement anything.',
-   'DISCOVERY (secret-free, add-workflow-model-fallback D2): run `ctx_shell pi --list-models` and parse every provider/model row into "provider/model" strings; return them as authenticated_models (array of strings). NEVER read auth.json or models.json — they contain user secrets. If the command fails, return authenticated_models as an empty array.',
+   'a 10-line excerpt of the instruction string. Do NOT implement anything.',
    'STATE MAPPING (verbatim from the payload): "ready" when progress.remaining > 0; "all_done" when no incomplete tasks remain; "blocked" ONLY when the payload itself reports it with non-empty missingArtifacts. Never infer blocked from anything else.',
   ].join('\n'),
   { label: 'load:' + CHANGE, phase: 'Load', agentType: 'general-purpose', effort: 'medium', model: MODELS.utility },
 )
 const snap = parseAgentJson(snapRaw, null)
-// D2: feed the discovered configured-model list to the fallback filter (secret-free CLI table).
-AUTHENTICATED_MODELS = (snap && Array.isArray(snap.authenticated_models) && snap.authenticated_models.length) ? snap.authenticated_models : null
-if (AUTHENTICATED_MODELS) log('Discovery: ' + AUTHENTICATED_MODELS.length + ' configured models on file for fallback filtering')
 if (!snap) {
   return { change: CHANGE, error: 'load-failed', note: 'load agent returned unparseable output — re-run resumes idempotently (checkboxes are the state)' }
 }

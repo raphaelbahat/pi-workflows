@@ -14,3 +14,7 @@
 > `pi --list-models` run (snapshot field `authenticated_models`), chains filtered to the
 > discovered list when present. No `auth.json`/`models.json` reads anywhere. Host model
 > overrides remain primary; unknown primaries get the default chain minus the primary.
+> **Amended 2026-09-14 (lazy discovery):** D2 discovery moved from eager Load-phase to lazy
+> first-failure (`agentFB` failure path), after production Load children probed
+> `pi --list-models` 2–6× per run and ingested the full 466-model table (~30 KB) on error-free
+> runs. Strict re-validation passed post-amendment.

@@ -38,18 +38,22 @@ whatever primary the host configured.
 
 ### Requirement: Secret-free run-time discovery in the apply Load phase
 
-The `openspec-apply-change` Load child SHALL run `pi --list-models` (CLI output only)
-and return the configured provider/model table in its snapshot field
-`authenticated_models`. The workflows SHALL NOT read `auth.json` or `models.json`
-(they contain user secrets). `agentFB` SHALL filter fallback chains to models present
-in the discovered configured list when a discovered list is available; absent or
+The workflows SHALL discover the configured provider/model table (via a minimal child
+running `pi --list-models`, CLI output only) LAZILY — once per run, at the FIRST terminal
+fallback need, never eagerly at Load (eager discovery made every Load child probe
+`pi --list-models` multiple times and ingest the full model table even on error-free runs).
+The discovered list SHALL be cached module-level (`AUTHENTICATED_MODELS`). The workflows
+SHALL NOT read `auth.json` or `models.json` (they contain user secrets). `agentFB` SHALL
+filter fallback chains to models present in the discovered list when available; absent or
 unparseable discovery SHALL NOT block the run (chains fall back to their hardcoded
 defaults). Authentication itself is enforced by the retry: a fallback model without
-working auth fails fast and the chain advances.
+working auth fails fast and the chain advances. When `args.retryPauseMs > 0`, the
+discovery child doubles as the ADR-0004 pause (its `gate` runs `sleep <seconds> && true`).
 
 #### Scenario: Discovery filters an unconfigured fallback
 
-- **WHEN** the Load snapshot reports configured models that exclude a fallback entry
+- **WHEN** the first terminal failure triggers lazy discovery and the discovered list
+  excludes a fallback entry
 - **THEN** `agentFB` skips that fallback and tries the next chain entry
 
 #### Scenario: Discovery unavailable does not block
