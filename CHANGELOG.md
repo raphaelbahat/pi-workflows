@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.2](https://github.com/raphaelbahat/pi-workflows/compare/v1.14.1...v1.14.2) (2026-09-14)
+
+
+### Bug Fixes
+
+* diagnostics charts — numeric x (index) + xAxis format mapping to run/role labels; yAxis compact human format (400.0M); explicit yDomain — fixes '0000000' ticks and missing x labels ([6e3fd2a](https://github.com/raphaelbahat/pi-workflows/commit/6e3fd2aff8a0345166347b94b65f1bce350f36e0))
+
 ## [1.14.1](https://github.com/raphaelbahat/pi-workflows/compare/v1.14.0...v1.14.1) (2026-09-14)
 
 
