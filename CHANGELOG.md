@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.4](https://github.com/raphaelbahat/pi-workflows/compare/v1.14.3...v1.14.4) (2026-09-15)
+
+
+### Bug Fixes
+
+* resume attempts wrapped in try/catch — pi-subagents THROWS 'no agent has completed under the label' when the resume target never completed (provider-dead child); the fresh-spawn fallback now catches both null returns and throws (routing-guidance workflow-threw root cause) ([41df650](https://github.com/raphaelbahat/pi-workflows/commit/41df65045acf61f1e74423b60b2b8366d926008a))
+
 ## [1.14.3](https://github.com/raphaelbahat/pi-workflows/compare/v1.14.2...v1.14.3) (2026-09-14)
 
 
