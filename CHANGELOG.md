@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.5](https://github.com/raphaelbahat/pi-workflows/compare/v1.14.4...v1.14.5) (2026-09-15)
+
+
+### Bug Fixes
+
+* implementer prompt hoist completed — join + agentFB call restored; empty-verdict retry wired ([b1b267f](https://github.com/raphaelbahat/pi-workflows/commit/b1b267faf824a8003576d4f93360acbd88574b73))
+
 ## [1.14.4](https://github.com/raphaelbahat/pi-workflows/compare/v1.14.3...v1.14.4) (2026-09-15)
 
 
