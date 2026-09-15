@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.7](https://github.com/raphaelbahat/pi-workflows/compare/v1.14.6...v1.14.7) (2026-09-15)
+
+
+### Bug Fixes
+
+* release PR auto-merge lookup — the action's pr output field is 'number' (not 'prNumber') and the fallback head name must prefix-match (component suffixes vary); both paths silently missed ([b6b9f98](https://github.com/raphaelbahat/pi-workflows/commit/b6b9f98ca5c1c29472d68ba117bb3ffd657c2c91))
+
 ## [1.14.6](https://github.com/raphaelbahat/pi-workflows/compare/v1.14.5...v1.14.6) (2026-09-15)
 
 
