@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.6](https://github.com/raphaelbahat/pi-workflows/compare/v1.14.5...v1.14.6) (2026-09-15)
+
+
+### Bug Fixes
+
+* add missing trailing newlines at EOF (19 files) — the end-of-file-fixer hook failed every CI run since these landed; prek fixes the files but exits non-zero, so push-triggered CI never went green ([82237b3](https://github.com/raphaelbahat/pi-workflows/commit/82237b3e17bc1f5793b5479226da09c1a9e0af83))
+
 ## [1.14.5](https://github.com/raphaelbahat/pi-workflows/compare/v1.14.4...v1.14.5) (2026-09-15)
 
 
