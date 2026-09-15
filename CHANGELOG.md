@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.8](https://github.com/raphaelbahat/pi-workflows/compare/v1.14.7...v1.14.8) (2026-09-15)
+
+
+### Bug Fixes
+
+* the npm-publish dispatch path pins the checkout to the requested tag — the tag-less dispatch was a silent no-op (the job gate reads github.event.release, absent on dispatch) and HEAD-checkout would publish a tree different from the released one ([1ca7cfe](https://github.com/raphaelbahat/pi-workflows/commit/1ca7cfea8f2ef9694241ec0fd93bca2de672e11f))
+
 ## [1.14.7](https://github.com/raphaelbahat/pi-workflows/compare/v1.14.6...v1.14.7) (2026-09-15)
 
 
