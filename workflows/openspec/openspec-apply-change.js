@@ -365,24 +365,31 @@ while (guard++ < MAX_ITERATIONS) {
   log('Task ' + task.id + ': dispatching implementer')
 
   // Implementer (effort high). Distinct from the verifier by design (ADR-0002).
-const implResponse = await agentFB(
-    [TOOL, IMPLEMENTER_CONTRACT, '', contextBlock(), '',
-     'Assigned task: ' + task.id + ' — ' + task.description,
-     'WORKING DIRECTORY: ' + (REPO_ABS || '(unknown — ask the host)') + ' — EVERY file you create or edit MUST use an ABSOLUTE path under that root. Relative paths resolve against a DIFFERENT session cwd and land in the wrong repository (observed failure).',
-     'TOOL ROUTING (hard rule): every command via ctx_shell, every content search via ctx_grep, file reads via ctx_read or bounded ranges — NEVER native bash/grep/read for covered operations. Sole exception: the ctx tool returns "not found" — fall back to the native tool and SAY SO in your final summary. Pipe test runs through | tail -50. Do NOT re-read design.md — the PRIMER covers it; re-read a section only when the primer is insufficient for your task.',
-     WORKTREE
-       ? 'ISOLATION: create a task-scoped git worktree (e.g. git worktree add ../' + CHANGE + '-' + task.id.replace(/[^a-z0-9]+/gi, '-') + '), do ALL work inside it, NEVER merge into the main tree, and report the worktree path in worktree_path. The host integrates and removes it.'
-       : 'ISOLATION: none requested for this run — edit the repository working tree directly.',
-     'TEST DISCIPLINE (token economy): run TASK-SCOPED tests first via ctx_shell — derive the test file(s) from the files this task touches (e.g. the .test.ts beside the module you edit) and run `ctx_shell bun test <that file>`; only if that passes AND the task touches shared wiring (index/entry/gate modules) run the FULL suite ONCE (`ctx_shell " + TESTCOMMAND + " | tail -20`). Never re-run the full suite repeatedly inside one task; pipe every test run through | tail -50.',
-     TESTGATE
-       ? 'TEST GATE: the gated suite (`' + TESTCOMMAND + '`) must pass before you report implemented — one full-suite run at the end of your task is enough if your scoped runs already passed.'
-       : 'TEST GATE: not enabled for this run.',
-     '',
-     'Execute the task, then return {task_id, status, summary, files_touched[], worktree_path?, test_outcome?, question_for_host?, handoff?}. OMIT worktree_path unless ISOLATION was requested for this run; files_touched entries MUST be absolute paths. handoff: ≤200 words written FOR THE NEXT SUB-AGENT (the verifier for this task, then the next task\'s implementer) — to make the context immediately at reach for them: absolute paths touched + what changed in each, PLUS a look-up hint per touched file (one grep keyword/short string + the changed line range as of your last edit — prefer the keyword if unsure); decisions and why; gotchas; test state; and up to THREE ranked must-know items (1 = most critical).',
-     'status "implemented" requires the task work actually done' + (TESTGATE ? ' and the gated tests passing' : '') + '.',
-    ].join('\n'),
-    { label: 'implement:' + task.id, phase: 'Implement', agentType: 'general-purpose', effort: 'high', model: MODELS.implementer },
-  )
+const implPrompt = [
+  TOOL, IMPLEMENTER_CONTRACT, '', contextBlock(), '',
+  'Assigned task: ' + task.id + ' — ' + task.description,
+  'WORKING DIRECTORY: ' + (REPO_ABS || '(unknown — ask the host)') + ' — EVERY file you create or edit MUST use an ABSOLUTE path under that root. Relative paths resolve against a DIFFERENT session cwd and land in the wrong repository (observed failure).',
+  'TOOL ROUTING (hard rule): every command via ctx_shell, every content search via ctx_grep, file reads via ctx_read or bounded ranges — NEVER native bash/grep/read for covered operations. Sole exception: the ctx tool returns "not found" — fall back to the native tool and SAY SO in your final summary. Pipe test runs through | tail -50. Do NOT re-read design.md — the PRIMER covers it; re-read a section only when the primer is insufficient for your task.',
+  WORKTREE
+    ? 'ISOLATION: create a task-scoped git worktree (e.g. git worktree add ../' + CHANGE + '-' + task.id.replace(/[^a-z0-9]+/gi, '-') + '), do ALL work inside it, NEVER merge into the main tree, and report the worktree path in worktree_path. The host integrates and removes it.'
+    : 'ISOLATION: none requested for this run — edit the repository working tree directly.',
+  'TEST DISCIPLINE (token economy): run TASK-SCOPED tests first via ctx_shell — derive the test file(s) from the files this task touches (e.g. the .test.ts beside the module you edit) and run `ctx_shell bun test <that file>`; only if that passes AND the task touches shared wiring (index/entry/gate modules) run the FULL suite ONCE (`ctx_shell " + TESTCOMMAND + " | tail -20`). Never re-run the full suite repeatedly inside one task; pipe every test run through | tail -50.',
+  TESTGATE
+    ? 'TEST GATE: the gated suite (`' + TESTCOMMAND + '`) must pass before you report implemented — one full-suite run at the end of your task is enough if your scoped runs already passed.'
+    : 'TEST GATE: not enabled for this run.',
+  '',
+  'Execute the task, then return {task_id, status, summary, files_touched[], worktree_path?, test_outcome?, question_for_host?, handoff?}. OMIT worktree_path unless ISOLATION was requested for this run; files_touched entries MUST be absolute paths. handoff: ≤200 words written FOR THE NEXT SUB-AGENT (the verifier for this task, then the next task\'s implementer) — to make the context immediately at reach for them: absolute paths touched + what changed in each, PLUS a look-up hint per touched file (one grep keyword/short string + the changed line range as of your last edit — prefer the keyword if unsure); decisions and why; gotchas; test state; and up to THREE ranked must-know items (1 = most critical).',
+  'status "implemented" requires the task work actually done' + (TESTGATE ? ' and the gated tests passing' : '') + '.',
+].join('\n')
+let implResponse = await agentFB(implPrompt, { label: 'implement:' + task.id, phase: 'Implement', agentType: 'general-purpose', effort: 'high', model: MODELS.implementer })
+  // Empty-verdict retry (add-fallback-retry-pause family, campaign 2026-09-14): a deepseek
+  // stream break at a toolUse boundary ended the run with an empty verdict after 25 turns of
+  // investigation. ONE fresh re-dispatch (agentFB carries pause + fallback chains) before
+  // escalating; the verifier remains the source of truth either way.
+  if (!implResponse || !String(implResponse).trim()) {
+    log('Task ' + task.id + ': empty implementer response — ONE fresh re-dispatch')
+    implResponse = await agentFB(implPrompt, { label: 'implement:' + task.id + ':retry', phase: 'Implement', agentType: 'general-purpose', effort: 'high', model: MODELS.implementer })
+  }
   let impl = parseAgentJson(implResponse, { task_id: task.id, status: 'failed', summary: String(implResponse || 'empty implementer response') })
   if (!impl || impl.status !== 'implemented') {
     // Blocker: stop dispatch immediately, ONE batched escalation (D7/ADR-0002).
