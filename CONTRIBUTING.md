@@ -1,13 +1,11 @@
 # Contributing
 
 This repository holds the pi-subagents workflow scripts, grouped by family under
-`workflows/pi-plugin/` (`pi-plugin-eval.js`, `pi-plugin-comparison.js`,
-`pi-plugin-stack-advisor.js`, `pi-plugin-pipeline.js`) and `workflows/openspec/`
-(`openspec-validate-change.js`, `openspec-plan-change.js`, …), plus the
-`checkpoint-bridge` extension under `extensions/`. The workflow scripts do **not**
-publish to npm — releases are tags + GitHub Releases + `CHANGELOG.md`, fully
-automated via release-please. The checkpoint-bridge extension **does** publish to
-npm as `pi-checkpoint-bridge` (see `.github/workflows/release-publish.yml`).
+`workflows/pi-plugin/` and `workflows/openspec/`, plus the `checkpoint-bridge` extension
+under `extensions/` (see each directory for the current script inventory). The workflow
+scripts do **not** publish to npm — releases are tags + GitHub Releases + `CHANGELOG.md`,
+fully automated via release-please. The checkpoint-bridge extension **does** publish to
+npm as `pi-checkpoint-bridge`, automated by the release workflows.
 
 ## Rules
 
