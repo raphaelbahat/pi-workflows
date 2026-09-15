@@ -413,7 +413,12 @@ const implResponse = await agentFB(
       ].join('\n')
         // Eviction-resilient (2026-09-14): the child record is dropped ~10 min after it finishes —
         // a late host answer can outlive it. Resume first (context preserved); on null, fresh spawn.
-      let retry = await agentFB(retryPrompt, { label: 'implement:' + task.id, resume: 'implement:' + task.id, phase: 'Implement' })
+      let retry = null
+      try {
+        retry = await agentFB(retryPrompt, { label: 'implement:' + task.id, resume: 'implement:' + task.id, phase: 'Implement' })
+      } catch (e) {
+        log('Task ' + task.id + ': resume threw (' + String((e && e.message) || e).slice(0, 90) + ') — fresh-spawn fallback')
+      }
       if (!retry) {
         log('Task ' + task.id + ': resume target evicted — fresh-spawn fallback')
         retry = await agentFB(retryPrompt, { label: 'implement:' + task.id + ':fresh', phase: 'Implement' })
@@ -442,7 +447,12 @@ const implResponse = await agentFB(
       ].join('\n')
         // Eviction-resilient (2026-09-14): the child record is dropped ~10 min after it finishes —
         // a late host answer can outlive it. Resume first (context preserved); on null, fresh spawn.
-      let selffix = await agentFB(selffixPrompt, { label: 'implement:' + task.id, resume: 'implement:' + task.id, phase: 'Implement' })
+      let selffix = null
+      try {
+        selffix = await agentFB(selffixPrompt, { label: 'implement:' + task.id, resume: 'implement:' + task.id, phase: 'Implement' })
+      } catch (e) {
+        log('Task ' + task.id + ': resume threw (' + String((e && e.message) || e).slice(0, 90) + ') — fresh-spawn fallback')
+      }
       if (!selffix) {
         log('Task ' + task.id + ': resume target evicted — fresh-spawn fallback')
         selffix = await agentFB(selffixPrompt, { label: 'implement:' + task.id + ':fresh', phase: 'Implement' })
@@ -520,7 +530,12 @@ const verifResponse = await agentFB(
       ].join('\n')
             // Eviction-resilient (2026-09-14): the child record is dropped ~10 min after it finishes —
             // a late host answer can outlive it. Resume first (context preserved); on null, fresh spawn.
-      let fixResponse = await agentFB(fixPrompt, { label: 'implement:' + task.id, resume: 'implement:' + task.id, phase: 'Implement' })
+      let fixResponse = null
+      try {
+        fixResponse = await agentFB(fixPrompt, { label: 'implement:' + task.id, resume: 'implement:' + task.id, phase: 'Implement' })
+      } catch (e) {
+        log('Task ' + task.id + ': resume threw (' + String((e && e.message) || e).slice(0, 90) + ') — fresh-spawn fallback')
+      }
       if (!fixResponse) {
         log('Task ' + task.id + ': resume target evicted — fresh-spawn fallback')
         fixResponse = await agentFB(fixPrompt, { label: 'implement:' + task.id + ':fresh', phase: 'Implement' })
