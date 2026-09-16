@@ -68,7 +68,8 @@ A workflow run = one `wf_*.workflow.jsonl` journal; its sub-agent children = sid
   `pi-checkpoint-bridge`) is required for all `workflows/openspec/` authoring/apply workflows —
   see [Workflows — OpenSpec group](workflows/openspec-workflows.md).
 - **pi-subagents quirks** (source-verified + issue-tracked upstream): agent-file `tools:` fields
-  scope built-ins only, extension tools need `extensions:` frontmatter entries pointing at
-  extension **entry files**; `StructuredOutput`-schema'd children can loop on degenerate
-  payloads (hence the QA pattern); lazily-registered extension tools surface via re-derived
-  scoping on v0.15+.
+  scope built-ins only; extension tools reach sub-agent sessions through the generated
+  `settings.json` `extensions:` array (outfitter #407/#408), so per-agent `extensions:`
+  entry-file frontmatter is no longer needed; `StructuredOutput`-schema'd children can loop on
+  degenerate payloads (hence the QA pattern); lazily-registered extension tools surface via
+  re-derived scoping on v0.15+.

@@ -86,11 +86,13 @@ anti-prose instruction before the run bails with `load-failed`.
 2. **3-strike malformed-call cap** — a rejected call is re-issued cleanly at most 3 times, then
    the child returns its best-effort text. (This killed the production loop class: a glm-5.3-flash
    status child re-emitted a degenerate `StructuredOutput` 2,064×.)
-3. **SHELL & SEARCH rule (corrected)** — use `ctx_shell`/`ctx_grep`/`ctx_read` only if they are
-   present in the session\'s tool list (check before first use); in workflow-spawned sub-agent
-   sessions they are typically ABSENT (lean-ctx\'s SDK peer dep could not resolve from the Outfitter
-   cache until `@earendil-works/pi-coding-agent` was installed there — outfitter#403) — then run
-   commands with bash, searches with grep, reads with read directly, WITHOUT retrying ctx tools.
+3. **SHELL & SEARCH rule** — use `ctx_shell`/`ctx_grep`/`ctx_read` only if they are
+   present in the session's tool list (check before first use); if absent, run
+   commands with bash, searches with grep, reads with read directly, WITHOUT retrying ctx
+   tools. (Historical: sub-agent sessions used to lose the ctx tools because lean-ctx's SDK
+   peer dep could not resolve from the Outfitter extension cache — outfitter#403, fixed by
+   Outfitter #407/#408: npm extensions are materialized into the generated settings.json and
+   their peer dependencies are installed into the cache automatically.)
 5. **One final answer** — `StructuredOutput` exactly once when available, else plain text
    (raw JSON is fine).
 
